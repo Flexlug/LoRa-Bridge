@@ -46,7 +46,7 @@
 
 | Сторона | Ограничение | Следствие |
 |---|---|---|
-| LoRa | Узкий канал: десятки байт на пакет, строгий **duty cycle** (EU868 1%) | rate-limit + усечение + admission control |
+| LoRa | Узкий канал: десятки байт на пакет, строгий **duty cycle** (EU868 1%) | rate-limit + проверка размера (reject, без усечения) + admission control |
 | LoRa | Канальные сообщения без ACK, без backfill после простоя | at-most-once; commit = факт передачи в эфир (TX-done) |
 | LoRa | Возможны дубликаты пакетов (mesh-ретрансляция) | обязательная дедупликация |
 | LoRa | Радио half-duplex, один узел = одна очередь TX | сериализованный egress-воркер в ядре |
@@ -70,6 +70,8 @@
 | AD-7 | **Статус-фидбек в мессенджеры** (реакция-индикатор) | Дуплекс = поток сообщений + поток статусов; пользователь видит судьбу сообщения. |
 | AD-8 | **Egress rate-limit + drop + уведомление** на стороне LoRa | Защита эфира/duty cycle; см. §7. |
 | AD-9 | **Loop-guard + dedup** обязательны | Мультикаст + RX-эхо собственных TX создают петли/дубли. |
+| AD-10 | **Обязательный префикс `[тип:ник]`** в каждом сообщении из мессенджера в LoRa; тип опускается, если в комнату пишет ровно один мессенджер | Получатель в эфире должен видеть автора и источник; ник — не опционален. |
+| AD-11 | **Размер — all-or-nothing: НЕ усекаем.** Если `префикс+текст` не влезает в `max_text_bytes` — сразу `REJECTED(TOO_LONG)` обратно в мессенджер | Молчаливая потеря части слов пользователя хуже явной ошибки; усечение искажает смысл. |
 
 ---
 
@@ -201,8 +203,16 @@ class DeliveryStatus(Enum):
     TRANSMITTING = "transmitting"  # взято воркером, отдано узлу
     SENT = "sent"                  # TX-done подтверждён узлом (COMMIT)
     MIRRORED = "mirrored"          # разослано остальным подписчикам
-    REJECTED = "rejected"          # admission: очередь полна / rate-limit / TTL
+    REJECTED = "rejected"          # admission отклонил (см. RejectReason)
     FAILED = "failed"              # нет TX-done в таймаут / ошибка узла
+
+
+class RejectReason(Enum):
+    TOO_LONG = "too_long"          # префикс+текст > max_text_bytes (НЕ усекаем)
+    RATE_LIMIT = "rate_limit"      # token-bucket исчерпан
+    QUEUE_FULL = "queue_full"      # bounded-очередь переполнена
+    TTL_EXPIRED = "ttl_expired"    # протухло в очереди до отправки
+    NOT_ALLOWED = "not_allowed"    # отправитель/чат вне allow-list
 
 
 @dataclass(frozen=True)
@@ -221,6 +231,35 @@ class Capabilities:
     supports_status_feedback: bool = False   # умеет показать статус (реакция)
     emits_tx_done: bool = False              # узел отдаёт TX-done (commit)
 ```
+
+### Сборка LoRa-нагрузки (префикс)
+
+Сообщение из мессенджера разворачивается в LoRa как `«<префикс><текст>»`, где
+префикс несёт **автора** и (условно) **тип мессенджера**:
+
+```
+несколько мессенджеров пишут в комнату → "[TG:Alex] привет"
+только один мессенджер пишет в комнату → "[Alex] привет"
+```
+
+```python
+def build_lora_payload(msg: Message, room: Room, fmt: LabelFormat) -> bytes:
+    nick = msg.sender.display_name
+    # тип опускаем, если в комнату пишет ровно один мессенджер (AD-10)
+    if room.writable_messenger_count > 1 and fmt.include_type:
+        label = f"[{msg.source.transport_kind}:{nick}] "   # "[TG:Alex] "
+    else:
+        label = f"[{nick}] "                                # "[Alex] "
+    return (label + msg.text).encode("utf-8")
+```
+
+- **Префикс ест бюджет** `max_text_bytes` (он часть полезной нагрузки). Бюджет
+  текста = `max_text_bytes − len(label_bytes)`.
+- **Тип мессенджера** (`transport_kind`: `TG`/`DC`/…) берётся из адаптера
+  источника, а не из текста пользователя (защита от подмены, D5).
+- Решение «один/несколько мессенджеров» — на уровне **комнаты**
+  (`writable_messenger_count` — сколько мессенджер-эндпоинтов с правом записи в
+  LoRa подписано на этот канал).
 
 ---
 
@@ -252,8 +291,10 @@ class Transport(Protocol):
     def subscribe(self) -> AsyncIterator[Message]: ...
 
     # Обратный канал статусов. No-op, если supports_status_feedback=False.
+    # reason заполняется только для REJECTED (см. RejectReason).
     async def report_status(self, origin: ChannelRef, message_id: str,
-                            status: DeliveryStatus) -> None: ...
+                            status: DeliveryStatus,
+                            reason: "Optional[RejectReason]" = None) -> None: ...
 ```
 
 Адаптеры (примеры `capabilities`):
@@ -299,8 +340,10 @@ sequenceDiagram
 
     U->>TGc: пишет сообщение
     TGc->>Q: ingest(msg)
-    Note over Q: admission: очередь полна / rate-limit / TTL?
-    alt отклонено
+    Note over Q: сборка [тип:ник]+текст; размер? rate-limit? очередь?
+    alt префикс+текст > лимита
+        Q-->>TGc: REJECTED(TOO_LONG) 📏 (сразу, НЕ усекаем)
+    else rate-limit / очередь полна
         Q-->>TGc: REJECTED ❌ (+ агрег. уведомление)
     else принято
         Q-->>TGc: PENDING 🕐
@@ -359,16 +402,32 @@ class Bridge:
                 await self._admit(msg)                     # в commit-очередь
 
     async def _admit(self, msg):
-        if not self.queue.offer(msg):          # bounded + rate-limit + TTL
-            await self._set_status(msg, DeliveryStatus.REJECTED)
-            await self.notifier.note_drop(msg.source)
+        room = self.rooms.for_source(msg.source)
+        payload = build_lora_payload(msg, room, self.label_fmt)   # префикс [тип:ник]
+
+        # AD-11: НЕ усекаем. Не влезло — сразу разворачиваем обратно с ошибкой.
+        if len(payload) > self.lora.capabilities.max_text_bytes:
+            over = len(payload) - self.lora.capabilities.max_text_bytes
+            await self._reject(msg, RejectReason.TOO_LONG, detail=f"+{over} Б")
+            return
+
+        ok, reason = self.queue.offer(msg, payload)   # bounded + rate-limit + TTL
+        if not ok:
+            await self._reject(msg, reason)           # RATE_LIMIT / QUEUE_FULL
             return
         await self._set_status(msg, DeliveryStatus.PENDING)
 
+    async def _reject(self, msg, reason, detail=""):
+        await self._set_status(msg, DeliveryStatus.REJECTED, reason=reason)
+        await self.notifier.note_reject(msg.source, reason, detail)   # debounce
+
     async def _egress_worker(self):
-        async for msg in self.queue:                       # FIFO, по одному
+        async for msg, payload in self.queue:              # FIFO, payload уже собран
+            if self.queue.is_stale(msg):                   # protух по TTL в очереди
+                await self._reject(msg, RejectReason.TTL_EXPIRED)
+                continue
             await self._set_status(msg, DeliveryStatus.TRANSMITTING)
-            res = await with_timeout(self.lora.send(...), self.tx_timeout)
+            res = await with_timeout(self.lora.send_raw(payload), self.tx_timeout)
             if res.ok:                                     # TX-done
                 await self._set_status(msg, DeliveryStatus.SENT)
                 await self._fanout_to_messengers(msg, exclude=msg.source.transport_id)
@@ -452,12 +511,14 @@ flowchart TB
     LG -- да --> D2[["drop (echo)"]]
     LG -- нет --> ORI{"Источник?"}
     ORI -- "LoRa" --> FOL["fan-out ВСЕМ мессенджерам\n(без очереди)"]
-    ORI -- "мессенджер" --> ADM{"Admission:\nочередь/rate-limit/TTL ok?"}
-    ADM -- нет --> REJ["status=REJECTED ❌\n+ агрег. уведомление"]
+    ORI -- "мессенджер" --> CMP["Сборка LoRa-нагрузки:\n• префикс [тип:ник] (тип опц.)\n• attachments → плейсхолдер\n• считаем в байтах UTF-8"]
+    CMP --> SZ{"префикс+текст ≤\nmax_text_bytes?"}
+    SZ -- нет --> RJL["REJECTED(TOO_LONG) ❌📏\nразвернуть обратно с ошибкой\n(НЕ усекаем!)"]
+    SZ -- да --> ADM{"Admission:\nrate-limit / очередь ok?"}
+    ADM -- нет --> REJ["REJECTED(RATE_LIMIT/QUEUE_FULL) ❌\n+ агрег. уведомление"]
     ADM -- да --> PEND["status=PENDING 🕐\n→ commit-очередь"]
-    PEND --> WRK["egress-воркер: TRANSMITTING 📤"]
-    WRK --> XF["Transform под LoRa:\n• префикс sender_label\n• усечь до max_text_bytes (UTF-8!)\n• attachments → плейсхолдер\n• origin_tag"]
-    XF --> TX{"TX-done в таймаут?"}
+    PEND --> WRK["egress-воркер: TRANSMITTING 📤\n(TTL-протухшее → REJECTED)"]
+    WRK --> TX{"TX-done в таймаут?"}
     TX -- да --> SENT["status=SENT ✅"]
     SENT --> MIR["fan-out ОСТАЛЬНЫМ\n(exclude=источник)\nstatus=MIRRORED 📡"]
     TX -- нет --> FAIL["status=FAILED ⚠️"]
@@ -470,9 +531,12 @@ flowchart TB
 - **Loop-guard** — отбрасываем RX-сообщения, совпадающие с недавно
   оттранслированными нами (`origin_tag` + «recently-TX» множество с TTL), и
   сообщения от собственной identity бота.
-- **Transform** — только под нужды LoRa (приёмник медленный/узкий): префикс
-  отправителя, усечение **по границе UTF-8** (эмодзи/кириллица считаем в
-  **байтах**, не в символах), вложения → `summary`.
+- **Сборка нагрузки** (синхронно, ещё до очереди) — префикс `[тип:ник]` (тип
+  опускаем при единственном мессенджере в комнате), вложения → `summary`, всё
+  считаем **в байтах UTF-8** (эмодзи/кириллица многобайтны).
+- **Проверка размера** — `префикс+текст > max_text_bytes` ⇒ **`REJECTED(TOO_LONG)`
+  немедленно** обратно в мессенджер (AD-11: НЕ усекаем; сообщение даже не входит в
+  airtime-путь). В ошибке указываем, на сколько байт превышено.
 - **Admission** — bounded-очередь + token-bucket из `capabilities.egress_rate` +
   TTL (протухшее в очереди не отправляем, чтобы не тратить airtime на устаревшее).
 - **Drop-notifier** — коалесцирует дропы за окно (напр. 60 с) → одно
@@ -487,8 +551,9 @@ flowchart TB
 
 ```mermaid
 stateDiagram-v2
+    [*] --> REJECTED: TOO_LONG / NOT_ALLOWED (до очереди)
     [*] --> PENDING: принято в очередь
-    PENDING --> REJECTED: admission (очередь/rate-limit/TTL)
+    PENDING --> REJECTED: rate-limit / queue-full / TTL
     PENDING --> TRANSMITTING: взято воркером
     TRANSMITTING --> SENT: TX-done (COMMIT)
     TRANSMITTING --> FAILED: таймаут / ошибка узла
@@ -506,13 +571,26 @@ stateDiagram-v2
 | TRANSMITTING | 📤 | передаётся узлом |
 | SENT | ✅ | ушло в эфир (commit) |
 | MIRRORED | 📡 | отзеркалено остальным |
-| REJECTED | ❌ | rate-limit / очередь полна |
 | FAILED | ⚠️ | нет подтверждения от узла |
+| REJECTED | зависит от `reason` ↓ | не отправлено |
 
-Реализация: `report_status(origin, message_id, status)` зовётся ядром на каждом
-переходе; Telegram-адаптер мапит на реакцию исходного сообщения. `message_id`
-ядро берёт из входящего `Message.id` (корреляция). LoRa-адаптер `report_status` —
-no-op (`supports_status_feedback=False`).
+`REJECTED` несёт `RejectReason` — мессенджер показывает **конкретную** ошибку
+(реакция + текстовый ответ), а не общий «отказ»:
+
+| RejectReason | Реакция | Ответ пользователю |
+|---|---|---|
+| TOO_LONG | 📏 | «Сообщение длиннее лимита LoRa на N Б — сократите» |
+| RATE_LIMIT | 🐢 | «Превышен лимит эфира, M сообщений отброшено» (агрег.) |
+| QUEUE_FULL | 🚦 | «Очередь на эфир переполнена, попробуйте позже» |
+| TTL_EXPIRED | ⌛ | «Не успели отправить вовремя» |
+| NOT_ALLOWED | 🚫 | «Нет прав на отправку в этот канал» |
+
+Реализация: `report_status(origin, message_id, status, reason)` зовётся ядром на
+каждом переходе; Telegram-адаптер мапит на реакцию исходного сообщения и (для
+`REJECTED`/`FAILED`) на текстовый ответ-реплай. `message_id` ядро берёт из
+входящего `Message.id` (корреляция). LoRa-адаптер `report_status` — no-op
+(`supports_status_feedback=False`). `TOO_LONG` отдаётся **синхронно** в момент
+приёма — пользователь видит ошибку мгновенно, сообщение в эфир не попадает.
 
 ---
 
@@ -559,7 +637,8 @@ lora:
 
 messengers:
   - id: telegram-main
-    kind: telegram
+    kind: telegram        # kind → тег источника в префиксе LoRa: "TG"
+    tag: "TG"             # переопределение тега (по умолчанию из kind)
     token: ${TG_BOT_TOKEN}
     # privacy mode у бота ДОЛЖЕН быть отключён (BotFather /setprivacy → Disable)
 
@@ -575,6 +654,11 @@ policies:
   egress_rate: { msgs_per_window: 6, window_seconds: 60 }      # под duty cycle
   queue_ttl_seconds: 45                                        # admission TTL
   reconnect_backoff: { base: 2, max: 60, jitter: true }
+  label:
+    include_type: auto            # auto | always | never (auto: тег если >1 мессенджера в комнате)
+    format: "[{type}:{nick}] "    # шаблон префикса; {type} опускается по include_type
+    max_nick_bytes: 24            # ник усекаем при необходимости; ТЕКСТ — никогда (AD-11)
+    on_oversize: reject           # reject (по умолчанию) — НЕ truncate
 ```
 
 > Несколько каналов на одном узле **делят одно радио** → общая commit-очередь и
@@ -596,7 +680,7 @@ meshcore_bridge/
 │   ├── hub.py           # горячий мультикаст RX-поток
 │   ├── dedup.py         # TTL-LRU
 │   ├── loopguard.py     # TX-эхо / origin_tag
-│   ├── transform.py     # label / truncate(UTF-8) / attachments
+│   ├── transform.py     # build_lora_payload: label [тип:ник] / attachments / size-check
 │   ├── status.py        # диспетчер статусов → report_status
 │   └── notifier.py      # debounced drop-notice
 ├── transports/
@@ -646,11 +730,13 @@ meshcore_bridge/
 
 | # | Риск | Митигация |
 |---|---|---|
-| D1 | Сообщение длиннее LoRa-пакета | усечение по `max_text_bytes` по границе UTF-8 + `…` (фрагментация — пост-MVP) |
-| D2 | **Эмодзи/кириллица:** лимит в байтах, не символах | считать байты UTF-8, не `len(str)` |
-| D3 | Вложения не лезут в LoRa | политика `placeholder`/`url`/`drop` |
+| D1 | Сообщение `префикс+текст` длиннее LoRa-пакета | **НЕ усекаем** (AD-11): синхронный `REJECTED(TOO_LONG)` 📏 обратно с указанием превышения в байтах |
+| D2 | **Эмодзи/кириллица:** лимит в байтах, не символах | считать байты UTF-8, не `len(str)` — и для текста, и для ника, и для префикса |
+| D3 | Вложения не лезут в LoRa | политика `placeholder`/`url`/`drop`; плейсхолдер тоже входит в бюджет и может вызвать TOO_LONG |
 | D4 | Markdown/entities Telegram | в LoRa — plain; обратно — экранирование MarkdownV2 |
-| D5 | **Подмена отправителя** текстом `[TG:Admin]…` | префикс формирует только мост из доверенного `Identity`; польз. текст санитизируется |
+| D5 | **Подмена отправителя/типа** текстом `[TG:Admin]…` | префикс и `transport_kind` формирует только мост из доверенного `Identity`; польз. текст санитизируется |
+| D6 | **Префикс ест бюджет.** Длинный ник может почти не оставить места тексту, а то и сам превысить лимит | ник усекаем (`max_nick_bytes`), **текст — никогда**; если даже усечённый префикс не влезает — TOO_LONG с понятной причиной |
+| D7 | **Условный тег типа.** При >1 мессенджере в комнате нужен `[TG:…]`, при одном — лишний; смена числа подписчиков меняет длину префикса (граница TOO_LONG «плавает») | `include_type: auto` считает `writable_messenger_count` по комнате; для предсказуемости можно зафиксировать `always`/`never` |
 
 ### E. Идентичность, безопасность, право
 
