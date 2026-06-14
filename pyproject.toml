@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "meshcore-bridge"
+name = "lora-bridge"
 version = "0.0.1"
-description = "Двунаправленный мост между MeshCore (LoRa) и мессенджерами (Telegram, …)"
+description = "Двунаправленный мост между LoRa-сетями (MeshCore, …) и мессенджерами (Telegram, …)"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { file = "LICENSE" }
@@ -27,10 +27,10 @@ dev = [
 ]
 
 [project.scripts]
-meshcore-bridge = "meshcore_bridge.app:main"
+lora-bridge = "lora_bridge.app:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["meshcore_bridge"]
+packages = ["lora_bridge"]
 
 [tool.ruff]
 line-length = 100

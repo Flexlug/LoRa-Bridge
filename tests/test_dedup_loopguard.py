@@ -1,7 +1,7 @@
 """Тесты dedup и loop-guard на LoRa-пути (A1/A3)."""
-from meshcore_bridge.core.dedup import TtlDedup
-from meshcore_bridge.core.loopguard import LoopGuard
-from meshcore_bridge.domain.models import ChannelRef, Identity, Message
+from lora_bridge.core.dedup import TtlDedup
+from lora_bridge.core.loopguard import LoopGuard
+from lora_bridge.domain.models import ChannelRef, Identity, Message
 
 
 class FakeClock:

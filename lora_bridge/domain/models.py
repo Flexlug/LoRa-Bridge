@@ -18,6 +18,15 @@ class ChannelRef:
     channel: str                     # opaque id эндпоинта; топик — забота адаптера
 
 
+def messenger_channel(chat: str, topic: Optional[str]) -> str:
+    """Канонический opaque ``ChannelRef.channel`` для мессенджер-эндпоинта.
+
+    Единый контракт для RoomRegistry (ядро) и мессенджер-адаптера (транспорт) —
+    обе стороны кодируют (chat, topic) одинаково, иначе RX не сматчится с комнатой.
+    """
+    return f"{chat}#{topic}" if topic else chat
+
+
 @dataclass(frozen=True)
 class Identity:
     display_name: str
@@ -100,5 +109,6 @@ class LabelFormat:
 @dataclass
 class Room:
     """Логическая комната: один LoRa-эндпоинт ↔ N подписчиков-мессенджеров (§12)."""
-    lora_endpoint: str                       # ключ из lora.endpoints → ChannelRef.channel
+    lora_endpoint: str                       # ключ из node.endpoints → ChannelRef.channel
     writable_messenger_count: int            # сколько мессенджеров ПИШУТ в комнату (для AD-10)
+    node_id: str = ""                        # id LoRa-ноды (lora[].id); пусто в unit-тестах transform
