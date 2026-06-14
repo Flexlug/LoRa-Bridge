@@ -50,7 +50,7 @@
 | Сторона | Ограничение | Следствие |
 |---|---|---|
 | LoRa | Узкий канал: десятки байт на пакет, строгий **duty cycle** (EU868 1%) | rate-limit + проверка размера (reject, без усечения) + admission control |
-| LoRa | Канальные сообщения без ACK, без backfill после простоя | at-most-once; commit = факт передачи в эфир (TX-done) |
+| LoRa | Канальные сообщения без ACK, без backfill после простоя | at-most-once; commit = принятие узлом / ACK якоря (§5.1), не факт эфира |
 | LoRa | Возможны дубликаты пакетов (mesh-ретрансляция) | обязательная дедупликация |
 | LoRa | Радио half-duplex, один узел = одна очередь TX | сериализованный egress-воркер в ядре |
 | LoRa | Нет тем/threads, имена узлов короткие | темы — на стороне мессенджера (конфиг адаптера); маркировка отправителя |
@@ -68,13 +68,19 @@
 | AD-2 | **Единый порт `Transport`** для LoRa и мессенджеров; различия — через `Capabilities` | Не плодим параллельные иерархии; ядро не ветвится по типу транспорта. |
 | AD-3 | **Клиент-сервер**: сервер = ядро, клиенты = транспорты; **LoRa-клиент один** | Ядро — шина и арбитр; естественно даёт 1-ко-многим. |
 | AD-4 | **LoRa как commit-log**: сообщение из мессенджера сначала уходит в эфир, и только по **TX-done** зеркалится остальным | Единый источник правды и порядок; мессенджеры — зеркала канала, а не отдельные чаты. |
-| AD-5 | **Commit = TX-done** (узел подтвердил передачу в эфир) | Сильнейший правдивый сигнал: delivery-ACK у канальных сообщений нет. |
+| AD-5 | **Commit зависит от режима доставки** (§5.1): *broadcast* — по `MSG_OK` (узел принял к передаче) + airtime-pace; *anchored* — по delivery-ACK (`0x82`) от заданной ноды/Room Server | MeshCore **не даёт TX-done для каналов**; реальное подтверждение есть только у direct-сообщений |
 | AD-6 | **Сериализованная commit-очередь** + один egress-воркер с таймаутом TX-done | Один радиоузел физически сериализует TX; синхронный gated fan-out. |
 | AD-7 | **Статус-фидбек в мессенджеры** (реакция-индикатор) | Дуплекс = поток сообщений + поток статусов; пользователь видит судьбу сообщения. |
 | AD-8 | **Egress rate-limit + drop + уведомление** на стороне LoRa | Защита эфира/duty cycle; см. §7. |
 | AD-9 | **Loop-guard + dedup** обязательны | Мультикаст + RX-эхо собственных TX создают петли/дубли. |
 | AD-10 | **Обязательный префикс `[тип:ник]`** в каждом сообщении из мессенджера в LoRa; тип опускается, если в комнату пишет ровно один мессенджер | Получатель в эфире должен видеть автора и источник; ник — не опционален. |
 | AD-11 | **Размер — all-or-nothing: НЕ усекаем.** Если `префикс+текст` не влезает в `max_text_bytes` — сразу `REJECTED(TOO_LONG)` обратно в мессенджер | Молчаливая потеря части слов пользователя хуже явной ошибки; усечение искажает смысл. |
+
+> **Соглашение о термине «TX-done».** В тексте ядра ниже «TX-done» используется как
+> абстрактное имя **события commit** (момент, когда `lora.send()` резолвится). Его
+> конкретная реализация в MeshCore — **не** факт передачи в эфир, а `MSG_OK`
+> (broadcast) либо delivery-ACK якоря (anchored); детали — §5.1. Ядру механизм
+> безразличен: оно ждёт «commit ok / fail».
 
 ---
 
@@ -293,11 +299,11 @@ class Transport(Protocol):
 Адаптеры (примеры `capabilities`):
 
 ```python
-# MeshCore: медленный коммит-источник, отдаёт TX-done, без статусов
+# MeshCore: медленный коммит-источник; TX-done НЕТ (см. §5.1)
 MeshCoreTransport.capabilities = Capabilities(
-    max_text_bytes=160,
-    egress_rate=RateSpec(6, 60),          # консервативно под duty cycle
-    supports_status_feedback=False, emits_tx_done=True)
+    max_text_bytes=150,                   # реальный байтовый бюджет узла (~133 симв / 163 Б)
+    egress_rate=RateSpec(6, 60),          # консервативно под duty cycle + airtime-pace
+    supports_status_feedback=False, emits_tx_done=False)
 
 # Telegram: быстрый, умеет реакции-статусы
 TelegramTransport.capabilities = Capabilities(
@@ -306,11 +312,60 @@ TelegramTransport.capabilities = Capabilities(
     supports_status_feedback=True, emits_tx_done=False)
 ```
 
-> **Реализация TX-done для MeshCore.** `send()` LoRa-адаптера не возвращается по
-> записи в companion-линк, а ждёт события **TX-done** от прошивки (с таймаутом).
-> Так «успешно отправлено в узел» = «физически ушло в эфир», что и есть наш
-> commit. Если прошивка не отдаёт TX-done — деградируем до queue-ACK с
-> предупреждением (и помечаем коммит как «слабый»).
+> **Что значит `send()` для MeshCore.** TX-done у канальных сообщений в MeshCore
+> **не существует** (`send_chan_msg` возвращает лишь `MSG_OK` = узел принял к
+> передаче; delivery-ACK есть только у direct-сообщений). Поэтому `send()`
+> резолвится **по режиму доставки** — см. §5.1.
+
+### 5.1. Контракт MeshCore-адаптера
+
+Адаптер реализует порт `Transport` поверх библиотеки `meshcore` (companion-протокол
+по Serial/BLE/TCP). Прожарка контракта против реального протокола вскрыла ряд
+жёстких ограничений — ниже они и то, как адаптер их закрывает.
+
+**Главное: у канальных сообщений нет подтверждения доставки.** `send_chan_msg`
+возвращает `MSG_OK` = *локальное* принятие узлом (`PACKET_MSG_SENT 0x06`), без
+факта передачи в эфир. Delivery-ACK (`PACKET_ACK 0x82`) бывает **только у direct**:
+адресат возвращает definite-ACK (*pending/confirmed/failed*) + delivery-report со
+списком репитеров на пути. Отсюда — **два режима доставки** (per-room, конфиг):
+
+```mermaid
+flowchart TB
+    M["Сообщение в LoRa"] --> Q{"задан confirm-anchor\n(pubkey/префикс)?"}
+    Q -- нет --> B["BROADCAST: send_chan_msg(idx, text)\ncommit = MSG_OK + airtime-pace\n✅ = «принято узлом, ушло в эфир»"]
+    Q -- да --> A["ANCHORED: direct → anchor pubkey\ncommit = ACK 0x82 в таймаут (path-report)\n✅ = «нода ⟨prefix⟩ подтвердила», timeout → FAILED"]
+```
+
+- **BROADCAST** (якорь не задан): fire-and-forget в слот канала. `✅` честно
+  означает лишь «узел принял к передаче»; что дальше — забота владельца ноды.
+- **ANCHORED** (якорь = pubkey, обычно **Room Server**): шлём direct, ждём ACK.
+  Даёт реальное подтверждение **и store-and-forward** (закрывает F2 — backfill для
+  тех, кто был вне зоны). Цена: бьёт в якорь+участников room server, а не в
+  произвольных слушателей; нужен обмен адвертами (обе ноды знают pubkey друг друга).
+
+**Корнер-кейсы контракта (R-список):**
+
+| # | Реальность MeshCore | Как закрываем |
+|---|---|---|
+| R1 | TX-done нет; commit = `MSG_OK` или anchor-ACK | два режима выше; `emits_tx_done=False` |
+| R2 | RX — pull-дренаж: `MESSAGES_WAITING` → надо вычитывать; есть баг [#1232](https://github.com/meshcore-dev/MeshCore/issues/1232) (`CHANNEL_MSG_RECV` не фаерится) | включаем `start_auto_message_fetching()`; страховочный `get_msg()` + health-check; иначе RX-буфер узла переполнится (backpressure на приём) |
+| R3 | Канал = **слот-индекс 0–7** с PSK, не имя | при `start()`: enumerate каналы → `name→index`; нет слота — провизионим (add+PSK) или громко падаем. Public = индекс 0 |
+| R4 | Очередь узла полна → `ERR_CODE_TABLE_FULL (3)` | адаптер → `SendResult(busy/retry)`, **не** `FAILED`; egress-лимитер ① держим ниже ёмкости |
+| R5 | Лимит ~133 симв / `MAX_CHANNEL_DATA=163 Б`; потолок **байтовый** | `max_text_bytes` из реального бюджета (~150), TOO_LONG-чек по байтам (валидирует D2: кириллица!) |
+| R6 | timestamp в send/RX зависит от часов узла | `set-time` при `start()`; RX-timestamp `Optional`/untrusted |
+| R7 | Версии фреймов: `CHANNEL_MSG_RECV 0x08` vs `_V3 0x11` | фиксируем версию протокола из device-info, логируем; полагаемся на абстракцию либы |
+| R8 | Self-echo: узел свой TX обычно не отдаёт на RX (+ node-dedup) | риск низкий; core loop-guard оставляем как страховку |
+| R9 | `auto_reconnect`, но `max_reconnect_attempts` **конечно** | для долгоживущего моста — ∞ (или свой supervisor); после reconnect: re-drain, re-set-time, re-resolve index |
+| R10 | BLE: PIN-пейринг, ОС-бондинг, нестабильность | для прода рекомендуем **Serial/TCP**; BLE — опция |
+
+**Жизненный цикл адаптера:**
+- `start()`: connect (serial/tcp) → `set-time` → resolve `channel name→index` (или провизион) → `start_auto_message_fetching()` → (anchored) убедиться, что anchor в контактах.
+- `subscribe()`: эмитит **только** `CHANNEL_MSG_RECV` нужного индекса (фильтруя `ADVERTISEMENT`/`ACK`/`CONTACT_MSG_RECV`); дренаж-страховка против R2.
+- `send()`: BROADCAST → `send_chan_msg` (≈5с таймаут → `FAILED`; `TABLE_FULL` → busy) + airtime-pace; ANCHORED → direct + ждём `0x82` в таймаут.
+
+> Источники: [Companion Protocol (docs)](https://docs.meshcore.io/companion_protocol/),
+> [companion_protocol.md](https://github.com/meshcore-dev/MeshCore/blob/main/docs/companion_protocol.md),
+> [FAQ](https://docs.meshcore.io/faq/), [meshcore_py](https://github.com/meshcore-dev/meshcore_py).
 
 ---
 
@@ -458,8 +513,8 @@ flowchart TB
 - **① Наш лимитер/очередь** — единственное место, где мы *хотим* упереться:
   только здесь можно вернуть статус `REJECTED` ❌ и уведомить пользователя.
 - **③ TX-очередь узла** — мала (единицы–десятки пакетов); при переполнении либо
-  `busy` (если есть feedback), либо **тихий drop**. Поэтому коммитим по TX-done,
-  а не по «приняли в очередь».
+  `busy` (если есть feedback), либо **тихий drop**. Поэтому в anchored-режиме
+  коммитим по ACK якоря, а не по «приняли в очередь» (§5.1).
 - **④ Duty cycle** — физический потолок. При дальнобойных пресетах time-on-air
   одного пакета ~**0.5–2 с**; при 1% это ≈ **1 пакет на ~100 с** устойчиво на
   под-диапазоне (бёрст до выжигания бюджета, потом тишина). US915 — без duty
@@ -692,10 +747,13 @@ LoRa-канал + его мессенджер-подписчики.
 ```yaml
 lora:
   id: meshcore-1
-  connection: { type: tcp, host: 127.0.0.1, port: 5000 }   # tcp|serial|ble
+  connection: { type: tcp, host: 127.0.0.1, port: 5000 }   # tcp|serial|ble (prod: serial/tcp)
   channels:
-    - { name: "emergency", secret: ${MC_EMERGENCY_SECRET} }
-  tx_done_timeout_seconds: 30
+    # confirm_anchor опц.: pubkey/префикс ноды (обычно Room Server), от которой ждём ACK.
+    #   задан  → ANCHORED: direct + delivery-ACK = commit (см. §5.1)
+    #   опущен → BROADCAST: send_chan_msg, commit = MSG_OK + airtime-pace
+    - { name: "emergency", secret: ${MC_EMERGENCY_SECRET}, confirm_anchor: "a1b2c3d4" }
+  commit_timeout_seconds: 30        # таймаут ACK (anchored) / send-команды (broadcast)
 
 messengers:
   - id: telegram-main
@@ -749,7 +807,7 @@ meshcore_bridge/
 │   ├── journal.py       # OutboundJournal (интерфейс) + SQLite-реализация, recovery (§11.1)
 │   └── notifier.py      # debounced drop-notice
 ├── transports/
-│   ├── meshcore/transport.py   # адаптер поверх lib `meshcore` (TX-done!)
+│   ├── meshcore/transport.py   # адаптер поверх lib `meshcore` (commit: §5.1)
 │   └── telegram/transport.py   # адаптер поверх `aiogram` (+ реакции-статусы)
 ├── config/{schema.py, loader.py}
 └── app.py               # composition root
@@ -787,8 +845,8 @@ meshcore_bridge/
 
 | # | Риск | Митигация |
 |---|---|---|
-| C1 | **«SENT ✅» вводит в заблуждение:** TX-done ≠ доставлено получателю (у канальных нет ACK) | документировать смысл ✅ = «ушло в эфир»; для гарантий — отдельный режим direct+ACK (дорого) |
-| C2 | **Прошивка не отдаёт TX-done** | деградация до queue-ACK с пометкой «слабый коммит» + предупреждение |
+| C1 | **«SENT ✅» вводит в заблуждение** в broadcast: `MSG_OK` ≠ доставлено получателю | смысл ✅ зависит от режима (§5.1): broadcast = «принято узлом», anchored = «якорь подтвердил приём» |
+| C2 | **TX-done у каналов нет** (норма, не edge-case) | два режима доставки §5.1: broadcast = `MSG_OK`+pace (✅ слабее), anchored = delivery-ACK от ноды (✅ настоящий) |
 | C3 | **Рестарт с in-flight сообщением** → у пользователя навсегда завис 🕐 | журнал намерений (SQLite, persist-before-act) + recovery на старте — см. §11.1. Серийный воркер ⇒ осиротевших `TRANSMITTING` ≤ 1 |
 
 ### D. Размер и формат
