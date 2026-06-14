@@ -1,0 +1,44 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "meshcore-bridge"
+version = "0.0.1"
+description = "Двунаправленный мост между MeshCore (LoRa) и мессенджерами (Telegram, …)"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+dependencies = [
+    "anyio>=4.0",          # структурная конкуррентность (task groups, memory streams)
+    "meshcore>=1.0",       # companion-протокол MeshCore (meshcore_py)
+    "aiogram>=3.0",        # Telegram Bot API
+    "pydantic>=2.0",       # валидация конфига
+    "pyyaml>=6.0",         # парсинг config.yaml
+    "aiosqlite>=0.19",     # журнал намерений (§11.1)
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-anyio>=0.0",
+    "ruff>=0.4",
+    "mypy>=1.8",
+]
+
+[project.scripts]
+meshcore-bridge = "meshcore_bridge.app:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["meshcore_bridge"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+
+[tool.pytest.ini_options]
+anyio_mode = "auto"
