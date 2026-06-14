@@ -1,36 +1,71 @@
 """Bounded commit-очередь + admission: rate-limit (token-bucket) + TTL (§6, §7).
 
-Один узел физически сериализует TX → одна общая очередь и ОДИН egress-воркер.
+Один узел физически сериализует TX → одна очередь и ОДИН egress-воркер на ноду.
 Admission — единственное «доброе» место отказа: только здесь возвращаем REJECTED
 с обратной связью (RATE_LIMIT / TTL_EXPIRED).
 """
 from __future__ import annotations
 
+import time
+from dataclasses import dataclass, field
 from typing import AsyncIterator, Optional
 
-from ..domain.models import Message, RateSpec
+import anyio
+from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
+
+from ..domain.models import ChannelRef, Message, RateSpec
+from .ratelimit import TokenBucket
+
+
+@dataclass
+class QueueItem:
+    """Намерение передать payload на конкретный LoRa-эндпоинт (§6)."""
+    source: ChannelRef                 # откуда пришло (для статусов/мирроринга)
+    source_msg_id: str                 # native id источника (корреляция статуса/журнала)
+    target: ChannelRef                 # целевой LoRa-эндпоинт (node/endpoint)
+    payload: Message                   # уже собранная строка [тип:ник]+текст
+    original: Message                  # исходное сообщение (для post-commit миррора)
+    from_messenger: bool               # источник — мессенджер (нужен статус/миррор)
+    enqueued_at: float = field(default_factory=time.monotonic)
 
 
 class CommitQueue:
-    """FIFO-очередь намерений на отправку в LoRa.
-
-    TODO(§6): bounded-буфер поверх anyio memory stream; token-bucket по RateSpec;
-    per-source квота (B3); admission TTL (B1); пометка stale.
-    """
-
-    def __init__(self, capacity: int, rate: Optional[RateSpec], ttl_seconds: float) -> None:
-        self._capacity = capacity
-        self._rate = rate
+    def __init__(
+        self,
+        capacity: int,
+        rate: Optional[RateSpec],
+        ttl_seconds: float,
+        *,
+        _clock=time.monotonic,
+    ) -> None:
+        self._send: MemoryObjectSendStream[QueueItem]
+        self._recv: MemoryObjectReceiveStream[QueueItem]
+        self._send, self._recv = anyio.create_memory_object_stream[QueueItem](capacity)
+        self._bucket = TokenBucket(rate, _clock=_clock) if rate else None
         self._ttl = ttl_seconds
+        self._clock = _clock
 
-    def offer(self, msg: Message, payload: Message) -> bool:
-        """Поставить в очередь. ``False`` → переполнение/лимит (вызывающий шлёт RATE_LIMIT)."""
-        raise NotImplementedError("TODO(§6): bounded offer + token-bucket")
+    def offer(self, item: QueueItem) -> bool:
+        """Поставить в очередь. ``False`` → переполнение/лимит → вызывающий шлёт RATE_LIMIT."""
+        if self._bucket is not None and not self._bucket.try_consume():
+            return False
+        try:
+            self._send.send_nowait(item)
+            return True
+        except anyio.WouldBlock:
+            return False
 
-    def is_stale(self, msg: Message) -> bool:
+    def is_stale(self, item: QueueItem) -> bool:
         """Протухло ли по admission-TTL до отправки (B1)."""
-        raise NotImplementedError("TODO(§6): TTL по enqueued_at")
+        return (self._clock() - item.enqueued_at) > self._ttl
 
-    def __aiter__(self) -> AsyncIterator[tuple[Message, Message]]:
-        """Поток ``(original_msg, payload)`` для egress-воркера."""
-        raise NotImplementedError("TODO(§6): async-дренаж очереди")
+    def __aiter__(self) -> AsyncIterator[QueueItem]:
+        return self._recv.__aiter__()
+
+    async def close_input(self) -> None:
+        """Закрыть вход: воркер дренирует буфер и завершает async-for (для shutdown/тестов)."""
+        await self._send.aclose()
+
+    async def aclose(self) -> None:
+        await self._send.aclose()
+        await self._recv.aclose()

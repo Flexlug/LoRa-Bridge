@@ -179,3 +179,33 @@ class AppConfig(BaseModel):
     lora: list[LoraNode]                # несколько физических нод
     messengers: list[MessengerConfig]
     rooms: list[RoomConfig]
+
+    @model_validator(mode="after")
+    def _cross_refs(self) -> "AppConfig":
+        node_eps: dict[str, set[str]] = {}
+        for n in self.lora:
+            if n.id in node_eps:
+                raise ValueError(f"дублирующийся id LoRa-ноды: {n.id}")
+            node_eps[n.id] = set(n.endpoints)
+        msg_ids = {m.id for m in self.messengers}
+        if len(msg_ids) != len(self.messengers):
+            raise ValueError("дублирующиеся id мессенджеров")
+
+        def check_lora(ref: LoraRef, where: str) -> None:
+            if ref.node not in node_eps:
+                raise ValueError(f"{where}: неизвестная LoRa-нода '{ref.node}'")
+            if ref.endpoint not in node_eps[ref.node]:
+                raise ValueError(
+                    f"{where}: у ноды '{ref.node}' нет эндпоинта '{ref.endpoint}'"
+                )
+
+        for i, room in enumerate(self.rooms):
+            check_lora(room.lora, f"rooms[{i}].lora")
+            for s in room.subscribers:
+                if isinstance(s, LoraSubscriber):
+                    check_lora(s.lora, f"rooms[{i}].subscribers.lora")
+                elif s.transport not in msg_ids:
+                    raise ValueError(
+                        f"rooms[{i}].subscribers: неизвестный мессенджер '{s.transport}'"
+                    )
+        return self

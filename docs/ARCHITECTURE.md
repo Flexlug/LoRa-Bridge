@@ -866,9 +866,10 @@ lora_bridge/
 │   └── ports.py         # Protocol Transport (+ report_status)
 ├── core/
 │   ├── bridge.py        # ingress fan-in, маршрутизация LoRa/мессенджер; NodeRuntime (per-node)
-│   ├── queue.py         # bounded commit-очередь + admission (rate-limit + TTL)
+│   ├── routing.py       # RoomRegistry + LoraMember/MessengerMember (§12.1)
+│   ├── queue.py         # bounded commit-очередь (QueueItem) + admission (rate-limit + TTL)
+│   ├── ratelimit.py     # token-bucket egress-лимитера ①
 │   ├── egress.py        # egress-воркер (один НА НОДУ), gated на commit
-│   ├── hub.py           # горячий мультикаст RX-поток
 │   ├── dedup.py         # TTL-LRU
 │   ├── loopguard.py     # TX-эхо / origin_tag
 │   ├── transform.py     # build_lora_text: префикс [тип:ник] + clip ника + size-check
@@ -876,6 +877,7 @@ lora_bridge/
 │   ├── journal.py       # OutboundJournal (интерфейс) + SQLite-реализация, recovery (§11.1)
 │   └── notifier.py      # debounced drop-notice
 ├── transports/
+│   ├── hub.py           # горячий мультикаст RX-поток (общий для адаптеров)
 │   ├── meshcore/transport.py    # адаптер поверх lib `meshcore` (commit: §5.1)
 │   ├── meshtastic/              # *точка расширения (node.type=meshtastic), пока не реализован
 │   └── telegram/transport.py    # адаптер поверх `aiogram` (+ реакции-статусы)
@@ -884,7 +886,8 @@ lora_bridge/
 ```
 
 Зависимости направлены внутрь: `transports`/`config` → `domain`; `core` →
-`domain`; `domain` ни от кого.
+`domain`; `domain` ни от кого. (`hub` — утилита транспортного слоя, поэтому живёт
+в `transports/`, а не в `core/`.)
 
 ---
 

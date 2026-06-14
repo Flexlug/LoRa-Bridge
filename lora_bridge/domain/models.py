@@ -18,6 +18,15 @@ class ChannelRef:
     channel: str                     # opaque id эндпоинта; топик — забота адаптера
 
 
+def messenger_channel(chat: str, topic: Optional[str]) -> str:
+    """Канонический opaque ``ChannelRef.channel`` для мессенджер-эндпоинта.
+
+    Единый контракт для RoomRegistry (ядро) и мессенджер-адаптера (транспорт) —
+    обе стороны кодируют (chat, topic) одинаково, иначе RX не сматчится с комнатой.
+    """
+    return f"{chat}#{topic}" if topic else chat
+
+
 @dataclass(frozen=True)
 class Identity:
     display_name: str
