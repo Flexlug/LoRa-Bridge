@@ -62,10 +62,52 @@ Endpoint = Annotated[
 ]
 
 
-class LoraConfig(BaseModel):
+# --- Политики ноды (радио-специфичны → живут внутри ноды) ---------------------
+
+
+class EgressRate(BaseModel):
+    msgs_per_window: int
+    window_seconds: float
+
+
+class ReconnectBackoff(BaseModel):
+    base: float = 2
+    max: float = 60
+    jitter: bool = True
+
+
+class LabelPolicy(BaseModel):
+    include_type: Literal["auto", "always", "never"] = "auto"
+    format: str = "[{type}:{nick}] "
+    max_nick_bytes: int = 24
+    on_oversize: Literal["reject"] = "reject"   # НЕ truncate (AD-11)
+
+
+class NodePolicies(BaseModel):
+    egress_rate: EgressRate
+    queue_ttl_seconds: float = 45
+    commit_timeout_seconds: float = 30
+    reconnect_backoff: ReconnectBackoff = ReconnectBackoff()
+    dedup_ttl_seconds: float = 300
+    drop_notice_window_seconds: float = 60
+    label: LabelPolicy = LabelPolicy()
+
+
+# --- LoRa-ноды ----------------------------------------------------------------
+# Каждая нода имеет ЯВНЫЙ `type` (прошивка/протокол). Сейчас поддержан `meshcore`;
+# `type` — точка расширения под discriminated union (будущий MeshtasticNode),
+# фундамент для LoRa↔LoRa-мостинга.
+
+
+class MeshCoreNode(BaseModel):
+    id: str                             # идентификатор ноды (ссылка из rooms[].lora.node)
+    type: Literal["meshcore"] = "meshcore"
     connection: Connection
     endpoints: dict[str, Endpoint]      # MAP: имя эндпоинта → конфиг
-    commit_timeout_seconds: float = 30
+    policies: NodePolicies
+
+
+LoraNode = MeshCoreNode                 # TODO: Union[MeshCoreNode, MeshtasticNode] по `type`
 
 
 # --- Мессенджеры --------------------------------------------------------------
@@ -87,46 +129,20 @@ class Subscriber(BaseModel):
     topic: Optional[str] = None         # None → General (и только он)
 
 
+class LoraRef(BaseModel):
+    node: str                           # lora[].id
+    endpoint: str                       # ключ из node.endpoints
+
+
 class RoomConfig(BaseModel):
-    lora_endpoint: str                  # ключ из lora.endpoints
+    lora: LoraRef                       # node-qualified (имена эндпоинтов уникальны лишь в ноде)
     subscribers: list[Subscriber]
-
-
-# --- Политики -----------------------------------------------------------------
-
-
-class EgressRate(BaseModel):
-    msgs_per_window: int
-    window_seconds: float
-
-
-class ReconnectBackoff(BaseModel):
-    base: float = 2
-    max: float = 60
-    jitter: bool = True
-
-
-class LabelPolicy(BaseModel):
-    include_type: Literal["auto", "always", "never"] = "auto"
-    format: str = "[{type}:{nick}] "
-    max_nick_bytes: int = 24
-    on_oversize: Literal["reject"] = "reject"   # НЕ truncate (AD-11)
-
-
-class Policies(BaseModel):
-    dedup_ttl_seconds: float = 300
-    drop_notice_window_seconds: float = 60
-    egress_rate: EgressRate
-    queue_ttl_seconds: float = 45
-    reconnect_backoff: ReconnectBackoff = ReconnectBackoff()
-    label: LabelPolicy = LabelPolicy()
 
 
 # --- Корень -------------------------------------------------------------------
 
 
 class AppConfig(BaseModel):
-    lora: LoraConfig
+    lora: list[LoraNode]                # несколько физических нод
     messengers: list[MessengerConfig]
     rooms: list[RoomConfig]
-    policies: Policies

@@ -1,11 +1,11 @@
 """Тесты сборки LoRa-нагрузки и байтовых лимитов (§4, AD-10/AD-11, D2/D6)."""
-from meshcore_bridge.core.transform import (
+from lora_bridge.core.transform import (
     build_lora_text,
     clip_utf8,
     oversize_bytes,
     utf8_len,
 )
-from meshcore_bridge.domain.models import ChannelRef, Identity, LabelFormat, Message, Room
+from lora_bridge.domain.models import ChannelRef, Identity, LabelFormat, Message, Room
 
 
 def _msg(name: str, text: str) -> Message:

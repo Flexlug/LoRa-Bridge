@@ -100,5 +100,6 @@ class LabelFormat:
 @dataclass
 class Room:
     """Логическая комната: один LoRa-эндпоинт ↔ N подписчиков-мессенджеров (§12)."""
-    lora_endpoint: str                       # ключ из lora.endpoints → ChannelRef.channel
+    lora_endpoint: str                       # ключ из node.endpoints → ChannelRef.channel
     writable_messenger_count: int            # сколько мессенджеров ПИШУТ в комнату (для AD-10)
+    node_id: str = ""                        # id LoRa-ноды (lora[].id); пусто в unit-тестах transform

@@ -1,22 +1,42 @@
-# Пример конфигурации MeshCore-Bridge.
+# Пример конфигурации LoRa-Bridge.
 # Скопируйте в config.yaml и подставьте секреты через ${ENV_VAR}.
 # Подробности модели — docs/ARCHITECTURE.md (§5.1 типы эндпоинтов, §12 конфиг).
 
-lora:                              # один MeshCore-узел (companion)
-  connection: { type: usb, device_id: "0333:0303" }   # usb(VID:PID) | serial(port) | tcp(host:port) | ble(address)
-  # endpoints — это MAP: ключ = имя эндпоинта (на него ссылается rooms[].lora_endpoint).
-  # type — термин из MeshCore-приложения; вся механика (слоты, PSK, login, ACK) — в адаптере, §5.1.
-  endpoints:
-    general:                                       # Public-канал MeshCore (общий PSK), flood без ACK
-      type: public
-    emergency:                                     # Channel со своим secret (приватный), flood без ACK
-      type: private
-      secret: ${MC_EMERGENCY_SECRET}
-    ops:                                           # Room Server: direct + login, реальный ACK + backfill
-      type: room_server
-      pubkey: "a1b2c3d4…"
-      password: ${MC_OPS_PW}                       # guest-пароль (пусто → read-only, постинг недоступен)
-  commit_timeout_seconds: 30        # таймаут ACK (room_server) / send-команды (public/private)
+lora:                                # МАССИВ физических LoRa-нод
+  - id: meshcore-1
+    type: meshcore                   # тип ноды/прошивки (meshcore | meshtastic*) — фундамент под LoRa↔LoRa
+    connection: { type: usb, device_id: "0333:0303" }   # usb(VID:PID) | serial(port) | tcp(host:port) | ble(address)
+    # endpoints — это MAP: ключ = имя эндпоинта (на него ссылается rooms[].lora.endpoint).
+    # type — термин из MeshCore-приложения; механика (слоты, PSK, login, ACK) — в адаптере, §5.1.
+    endpoints:
+      general:                                       # Public-канал MeshCore (общий PSK), flood без ACK
+        type: public
+      emergency:                                     # Channel со своим secret (приватный), flood без ACK
+        type: private
+        secret: ${MC_EMERGENCY_SECRET}
+      ops:                                           # Room Server: direct + login, реальный ACK + backfill
+        type: room_server
+        pubkey: "a1b2c3d4…"
+        password: ${MC_OPS_PW}                       # guest-пароль (пусто → read-only)
+    policies:                        # политики САМОЙ ноды (радио-специфичны)
+      egress_rate: { msgs_per_window: 6, window_seconds: 60 }   # под duty cycle
+      queue_ttl_seconds: 45                          # admission TTL
+      commit_timeout_seconds: 30                     # таймаут ACK (room_server) / send (public/private)
+      reconnect_backoff: { base: 2, max: 60, jitter: true }
+      dedup_ttl_seconds: 300
+      drop_notice_window_seconds: 60
+      label:
+        include_type: auto           # auto | always | never (auto: тег если >1 мессенджера в комнате)
+        format: "[{type}:{nick}] "   # шаблон префикса; {type} опускается по include_type
+        max_nick_bytes: 24           # ник усекаем при необходимости; ТЕКСТ — никогда (AD-11)
+        on_oversize: reject          # reject (по умолчанию) — НЕ truncate
+
+  # Вторую ноду можно добавить здесь (другой радиоузел / другой регион / LoRa↔LoRa).
+  # - id: meshcore-2
+  #   type: meshcore
+  #   connection: { type: tcp, host: 127.0.0.1, port: 5000 }
+  #   endpoints: { relay: { type: public } }
+  #   policies: { egress_rate: { msgs_per_window: 6, window_seconds: 60 } }
 
 messengers:
   - id: telegram-main
@@ -26,21 +46,9 @@ messengers:
     # privacy mode у бота ДОЛЖЕН быть отключён (BotFather /setprivacy → Disable)
 
 rooms:
-  - lora_endpoint: "emergency"    # ключ из lora.endpoints (любого type)
+  - lora: { node: meshcore-1, endpoint: emergency }   # node-qualified ссылка
     subscribers:
       # topic указан → берём/шлём ТОЛЬКО эту тему
       - { transport: telegram-main, chat: "-1001234567890", topic: "42" }
       # topic опущен → работаем с General (и только с ним, не со всеми темами)
       - { transport: telegram-main, chat: "-1009999999999" }
-
-policies:
-  dedup_ttl_seconds: 300
-  drop_notice_window_seconds: 60
-  egress_rate: { msgs_per_window: 6, window_seconds: 60 }      # под duty cycle
-  queue_ttl_seconds: 45                                        # admission TTL
-  reconnect_backoff: { base: 2, max: 60, jitter: true }
-  label:
-    include_type: auto            # auto | always | never (auto: тег если >1 мессенджера в комнате)
-    format: "[{type}:{nick}] "    # шаблон префикса; {type} опускается по include_type
-    max_nick_bytes: 24            # ник усекаем при необходимости; ТЕКСТ — никогда (AD-11)
-    on_oversize: reject           # reject (по умолчанию) — НЕ truncate
