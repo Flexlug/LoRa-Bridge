@@ -2,6 +2,7 @@
 
 Чистые функции, без I/O — реализованы полностью (легко тестируются).
 """
+
 from __future__ import annotations
 
 from ..domain.models import LabelFormat, Message, Room
@@ -34,10 +35,10 @@ def build_lora_text(msg: Message, room: Room, tag: str, fmt: LabelFormat) -> str
     """
     nick = clip_utf8(msg.sender.display_name, fmt.max_nick_bytes)  # ник усекаем — ок
     if room.writable_messenger_count > 1 and fmt.include_type:
-        label = f"[{tag}:{nick}] "      # "[TG:Alex] "
+        label = f"[{tag}:{nick}] "  # "[TG:Alex] "
     else:
-        label = f"[{nick}] "            # "[Alex] "
-    return label + msg.text             # ТЕКСТ не трогаем; байты считает вызывающий
+        label = f"[{nick}] "  # "[Alex] "
+    return label + msg.text  # ТЕКСТ не трогаем; байты считает вызывающий
 
 
 def oversize_bytes(text: str, max_text_bytes: int) -> int:

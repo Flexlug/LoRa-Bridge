@@ -1,4 +1,5 @@
 """Точка входа: загрузить конфиг, собрать граф объектов, запустить мост (§13)."""
+
 from __future__ import annotations
 
 import logging
@@ -21,8 +22,9 @@ log = logging.getLogger(__name__)
 NOTICE_SENDER = Identity(display_name="bridge", transport_uid="__bridge__")
 
 
-async def recover(journal: SqliteJournal, nodes, status: StatusDispatcher,
-                   messenger_ids: set[str]) -> None:
+async def recover(
+    journal: SqliteJournal, nodes, status: StatusDispatcher, messenger_ids: set[str]
+) -> None:
     """Починка сирот после рестарта (§11.1): TRANSMITTING→UNKNOWN, PENDING→re-enqueue."""
     for e in await journal.recover():
         origin = ChannelRef(e.origin_transport, e.origin_chat)
@@ -34,12 +36,16 @@ async def recover(journal: SqliteJournal, nodes, status: StatusDispatcher,
         if node is None:
             continue
         payload = Message(id=e.origin_msg_id, source=origin, sender=NOTICE_SENDER, text=e.payload)
-        node.queue.offer(QueueItem(
-            source=origin, source_msg_id=e.origin_msg_id,
-            target=ChannelRef(e.target_node, e.target_endpoint),
-            payload=payload, original=payload,
-            from_messenger=e.origin_transport in messenger_ids,
-        ))
+        node.queue.offer(
+            QueueItem(
+                source=origin,
+                source_msg_id=e.origin_msg_id,
+                target=ChannelRef(e.target_node, e.target_endpoint),
+                payload=payload,
+                original=payload,
+                from_messenger=e.origin_transport in messenger_ids,
+            )
+        )
         await status.set(origin, e.origin_msg_id, DeliveryStatus.PENDING)
 
 
@@ -59,8 +65,13 @@ async def run(config: AppConfig, settings: Settings) -> None:
     await recover(journal, lora.runtimes, status, set(messengers.transports))
 
     bridge = Bridge(
-        nodes=lora.runtimes, messengers=messengers.transports, tags=messengers.tags,
-        rooms=build_rooms(config), status=status, notifier=notifier, journal=journal,
+        nodes=lora.runtimes,
+        messengers=messengers.transports,
+        tags=messengers.tags,
+        rooms=build_rooms(config),
+        status=status,
+        notifier=notifier,
+        journal=journal,
     )
     try:
         await bridge.run()

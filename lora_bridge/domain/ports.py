@@ -3,6 +3,7 @@
 И LoRa-клиент, и мессенджер реализуют один контракт. Дуплекс включает обратный
 канал статусов (``report_status``) — для отрисовки реакции в мессенджере.
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod

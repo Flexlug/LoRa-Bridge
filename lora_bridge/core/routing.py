@@ -4,6 +4,7 @@
 участников по ``ChannelRef`` источника, чтобы по входящему сообщению найти комнату
 и остальных участников.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass

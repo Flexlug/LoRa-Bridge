@@ -6,6 +6,7 @@
 
 Без живого токена адаптер не проверялся — места вызовов API помечены ``# verify``.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -72,20 +73,20 @@ class TelegramTransport(Transport):
         self._hub = Hub()
         self._bot = Bot(config.token)
         self._dp = Dispatcher()
-        self._dp.message.register(self.on_message, F.text)   # verify: фильтр текстовых
+        self._dp.message.register(self.on_message, F.text)  # verify: фильтр текстовых
 
     async def start(self) -> None:
-        me = await self._bot.get_me()                          # verify: бот доступен (sanity)
+        me = await self._bot.get_me()  # verify: бот доступен (sanity)
         log.info("Telegram-транспорт '%s': бот @%s (id=%d) подключён", self.id, me.username, me.id)
         self._poll_task = asyncio.create_task(
             self._dp.start_polling(self._bot, handle_signals=False)  # verify
         )
 
     async def stop(self) -> None:
-        await self._dp.stop_polling()                          # verify
+        await self._dp.stop_polling()  # verify
         if self._poll_task is not None:
             self._poll_task.cancel()
-        await self._bot.close()                                # verify
+        await self._bot.close()  # verify
 
     async def on_message(self, message: TgMessage) -> None:
         await self._hub.publish(self.normalize(message))
@@ -106,15 +107,17 @@ class TelegramTransport(Transport):
 
     async def send(self, target: ChannelRef, msg: Message) -> SendResult:
         chat_id, thread_id = split_channel(target.channel)
-        text = msg.text if msg.sender.transport_uid == "__bridge__" else (
-            f"<b>{msg.sender.display_name}</b>: {msg.text}"
+        text = (
+            msg.text
+            if msg.sender.transport_uid == "__bridge__"
+            else (f"<b>{msg.sender.display_name}</b>: {msg.text}")
         )
         try:
-            await self._bot.send_message(                      # verify
+            await self._bot.send_message(  # verify
                 chat_id, text, message_thread_id=thread_id, parse_mode="HTML"
             )
             return SendResult.success()
-        except Exception as exc:                               # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             log.exception("Telegram send в %s упал", target.channel)
             return SendResult.failure(str(exc))
 
@@ -122,16 +125,19 @@ class TelegramTransport(Transport):
         return self._hub.subscribe()
 
     async def report_status(
-        self, origin: ChannelRef, message_id: str,
-        status: DeliveryStatus, reason: Optional[RejectReason] = None,
+        self,
+        origin: ChannelRef,
+        message_id: str,
+        status: DeliveryStatus,
+        reason: Optional[RejectReason] = None,
     ) -> None:
         emoji = REJECT_EMOJI.get(reason) if reason else STATUS_EMOJI.get(status)
         if emoji is None or self._bot is None:
             return
         chat_id, _ = split_channel(origin.channel)
         try:
-            await self._bot.set_message_reaction(              # verify; идемпотентно (§11.1)
+            await self._bot.set_message_reaction(  # verify; идемпотентно (§11.1)
                 chat_id, int(message_id), reaction=[ReactionTypeEmoji(emoji=emoji)]
             )
-        except Exception:                                      # noqa: BLE001
+        except Exception:  # noqa: BLE001
             log.debug("set_message_reaction не удался для %s", message_id, exc_info=True)

@@ -3,13 +3,19 @@
 Каждая функция знает об одном компоненте: как собрать транспорт, runtime ноды
 или реестр комнат из конфига. run() в app.py только вызывает их по порядку.
 """
+
 from __future__ import annotations
 
 import logging
 from typing import NamedTuple, assert_never
 
 from .config.schema import (
-    AppConfig, LoraSubscriber, MeshCoreNode, MessengerConfig, TelegramMessengerConfig,
+    AppConfig,
+    LoraSubscriber,
+    MessengerSubscriber,
+    MeshCoreNode,
+    MessengerConfig,
+    TelegramMessengerConfig,
 )
 from .core.bridge import NodeRuntime
 from .core.notifier import NotifySink
@@ -82,7 +88,9 @@ def build_rooms(config: AppConfig) -> RoomRegistry:
     for room in config.rooms:
         log.debug(
             "регистрирую комнату: %s/%s → %d подписчиков",
-            room.lora.node, room.lora.endpoint, len(room.subscribers),
+            room.lora.node,
+            room.lora.endpoint,
+            len(room.subscribers),
         )
         members: list = [LoraMember(room.lora.node, room.lora.endpoint)]
         for sub in room.subscribers:
@@ -113,9 +121,16 @@ def build_notice_sink(messenger_transports: dict[str, Transport], sender: Identi
         transport = messenger_transports.get(ref.transport_id)
         if transport is None:
             return
-        await transport.send(ref, Message(
-            id=f"notice-{id(text)}", source=ref, sender=sender, text=text,
-        ))
+        await transport.send(
+            ref,
+            Message(
+                id=f"notice-{id(text)}",
+                source=ref,
+                sender=sender,
+                text=text,
+            ),
+        )
+
     return notice_sink
 
 

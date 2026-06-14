@@ -1,4 +1,5 @@
 """Token-bucket для egress-лимитера ① (§7). Наш единственный «добрый» предел."""
+
 from __future__ import annotations
 
 import time

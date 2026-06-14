@@ -3,6 +3,7 @@
 Радиоузел передаёт по одному пакету за раз → ОДИН воркер на ноду. Сериализация
 даёт ключевое свойство §11.1: в TRANSMITTING ≤ 1 сообщения в любой момент.
 """
+
 from __future__ import annotations
 
 from typing import Awaitable, Callable
@@ -51,7 +52,7 @@ class EgressWorker:
 
     async def run(self) -> None:
         async for item in self._queue:
-            if self._queue.is_stale(item):                 # протух по TTL до отправки (B1)
+            if self._queue.is_stale(item):  # протух по TTL до отправки (B1)
                 await self._journal.mark_terminal(self.make_key(item), DeliveryStatus.REJECTED)
                 await self._on_reject(item, RejectReason.TTL_EXPIRED)
                 continue
@@ -59,7 +60,7 @@ class EgressWorker:
 
     async def transmit(self, item: QueueItem) -> None:
         msg_key = self.make_key(item)
-        await self._journal.mark_transmitting(msg_key)     # persist ДО node.send() (§11.1)
+        await self._journal.mark_transmitting(msg_key)  # persist ДО node.send() (§11.1)
         await self._status.set(item.source, item.source_msg_id, DeliveryStatus.TRANSMITTING)
 
         result = await self.send_with_retry(item)
@@ -68,7 +69,7 @@ class EgressWorker:
             await self._journal.mark_terminal(msg_key, DeliveryStatus.SENT)
             await self._status.set(item.source, item.source_msg_id, DeliveryStatus.SENT)
             self._loop_guard.mark_sent(item.payload.text)  # гасим обратное эхо (A1/R8)
-            await self._on_committed(item)                 # post-commit миррор остальным (§6)
+            await self._on_committed(item)  # post-commit миррор остальным (§6)
             await self._journal.prune(msg_key)
         else:
             await self._journal.mark_terminal(msg_key, DeliveryStatus.FAILED)
@@ -81,9 +82,9 @@ class EgressWorker:
                 with anyio.fail_after(self._commit_timeout):
                     res = await self._lora.send(item.target, item.payload)
             except TimeoutError:
-                return None                                # нет commit в таймаут → FAILED (B2)
+                return None  # нет commit в таймаут → FAILED (B2)
             if not res.busy:
                 return res
             if attempt < BUSY_RETRIES - 1:
                 await anyio.sleep(BUSY_BACKOFF_S)
-        return res                                         # исчерпали ретраи busy → как есть
+        return res  # исчерпали ретраи busy → как есть

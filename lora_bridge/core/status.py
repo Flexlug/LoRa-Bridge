@@ -4,6 +4,7 @@
 сообщении в мессенджере-источнике. No-op для транспортов без поддержки фидбека
 (LoRa: supports_status_feedback=False).
 """
+
 from __future__ import annotations
 
 from ..domain.models import ChannelRef, DeliveryStatus, RejectReason

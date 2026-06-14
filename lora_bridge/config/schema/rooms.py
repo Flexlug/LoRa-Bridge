@@ -3,6 +3,7 @@
 Инвариант формы (§12.1): либо «1 LoRa + N мессенджеров», либо «2 LoRa + 0 мессенджеров».
 Смешивать нельзя — семантика префикса/статусов стала бы неоднозначной.
 """
+
 from __future__ import annotations
 
 from typing import Optional, Union
@@ -11,27 +12,27 @@ from pydantic import BaseModel, ConfigDict, model_validator
 
 
 class LoraRef(BaseModel):
-    node: str       # lora[].id
-    endpoint: str   # ключ из node.endpoints
+    node: str  # lora[].id
+    endpoint: str  # ключ из node.endpoints
 
 
 class MessengerSubscriber(BaseModel):
-    model_config = ConfigDict(extra="forbid")   # чёткая дискриминация union'а
-    transport: str                  # messengers[].id
+    model_config = ConfigDict(extra="forbid")  # чёткая дискриминация union'а
+    transport: str  # messengers[].id
     chat: str
-    topic: Optional[str] = None     # None → General (и только он)
+    topic: Optional[str] = None  # None → General (и только он)
 
 
 class LoraSubscriber(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    lora: LoraRef                   # LoRa-эндпоинт как подписчик (LoRa↔LoRa)
+    lora: LoraRef  # LoRa-эндпоинт как подписчик (LoRa↔LoRa)
 
 
 Subscriber = Union[MessengerSubscriber, LoraSubscriber]
 
 
 class RoomConfig(BaseModel):
-    lora: LoraRef                   # первичный LoRa-эндпоинт комнаты
+    lora: LoraRef  # первичный LoRa-эндпоинт комнаты
     subscribers: list[Subscriber]
 
     @model_validator(mode="after")

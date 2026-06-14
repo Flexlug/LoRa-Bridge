@@ -3,6 +3,7 @@
 Без надёжного id опираемся на хеш ``(sender_uid, text)`` + TTL-окно: timestamp у
 LoRa может отсутствовать, поэтому окно времени — основной механизм истечения.
 """
+
 from __future__ import annotations
 
 import time

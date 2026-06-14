@@ -3,6 +3,7 @@
 Чтобы не спамить «rate limited» по каждому отброшенному сообщению — копим счётчики
 по (source, reason) в окне и шлём одно агрегированное уведомление за окно.
 """
+
 from __future__ import annotations
 
 import time
@@ -17,12 +18,14 @@ NotifySink = Callable[[ChannelRef, str], Awaitable[None]]
 
 class WindowKey(NamedTuple):
     """Ключ окна дебаунса: один поток уведомлений на (транспорт, причина)."""
+
     transport_id: str
     reason: RejectReason
 
 
 class DropKey(NamedTuple):
     """Ключ счётчика накопленных дропов: точный источник + причина."""
+
     transport_id: str
     channel: str
     reason: RejectReason
@@ -50,9 +53,7 @@ class DropNotifier:
         self._counts: dict[DropKey, int] = defaultdict(int)
         self._last_flush: dict[WindowKey, float] = {}
 
-    async def note_reject(
-        self, source: ChannelRef, reason: RejectReason, detail: str = ""
-    ) -> None:
+    async def note_reject(self, source: ChannelRef, reason: RejectReason, detail: str = "") -> None:
         """Зарегистрировать отказ; первое за окно уведомляет сразу, дальше — копим."""
         now = self._clock()
         wkey = WindowKey(source.transport_id, reason)
@@ -74,7 +75,9 @@ class DropNotifier:
                 self._last_flush[wkey] = now
                 del self._counts[drop_key]
                 if count:
-                    await self._sink(drop_key.source, self.format_notice(drop_key.reason, count, ""))
+                    await self._sink(
+                        drop_key.source, self.format_notice(drop_key.reason, count, "")
+                    )
 
     @staticmethod
     def format_notice(reason: RejectReason, count: int, detail: str) -> str:

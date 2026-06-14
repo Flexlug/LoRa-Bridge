@@ -3,6 +3,7 @@
 Единственное место, где читается os.environ. Вся инфраструктурная конфигурация
 (не бизнес-логика, которая живёт в YAML) — здесь.
 """
+
 from __future__ import annotations
 
 import dataclasses

@@ -4,6 +4,7 @@
 Admission — единственное «доброе» место отказа: только здесь возвращаем REJECTED
 с обратной связью (RATE_LIMIT / TTL_EXPIRED).
 """
+
 from __future__ import annotations
 
 import time
@@ -20,12 +21,13 @@ from ..domain.models import ChannelRef, Message, RateSpec
 @dataclass
 class QueueItem:
     """Намерение передать payload на конкретный LoRa-эндпоинт (§6)."""
-    source: ChannelRef                 # откуда пришло (для статусов/мирроринга)
-    source_msg_id: str                 # native id источника (корреляция статуса/журнала)
-    target: ChannelRef                 # целевой LoRa-эндпоинт (node/endpoint)
-    payload: Message                   # уже собранная строка [тип:ник]+текст
-    original: Message                  # исходное сообщение (для post-commit миррора)
-    from_messenger: bool               # источник — мессенджер (нужен статус/миррор)
+
+    source: ChannelRef  # откуда пришло (для статусов/мирроринга)
+    source_msg_id: str  # native id источника (корреляция статуса/журнала)
+    target: ChannelRef  # целевой LoRa-эндпоинт (node/endpoint)
+    payload: Message  # уже собранная строка [тип:ник]+текст
+    original: Message  # исходное сообщение (для post-commit миррора)
+    from_messenger: bool  # источник — мессенджер (нужен статус/миррор)
     enqueued_at: float = field(default_factory=time.monotonic)
 
 
