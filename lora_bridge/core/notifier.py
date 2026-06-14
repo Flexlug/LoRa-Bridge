@@ -7,12 +7,33 @@ from __future__ import annotations
 
 import time
 from collections import defaultdict
-from typing import Awaitable, Callable
+from typing import Awaitable, Callable, NamedTuple
 
 from ..domain.models import ChannelRef, RejectReason
 
 # (chat-уведомитель) принимает source и текст; обычно — отправка в мессенджер-источник.
 NotifySink = Callable[[ChannelRef, str], Awaitable[None]]
+
+
+class WindowKey(NamedTuple):
+    """Ключ окна дебаунса: один поток уведомлений на (транспорт, причина)."""
+    transport_id: str
+    reason: RejectReason
+
+
+class DropKey(NamedTuple):
+    """Ключ счётчика накопленных дропов: точный источник + причина."""
+    transport_id: str
+    channel: str
+    reason: RejectReason
+
+    @property
+    def window_key(self) -> WindowKey:
+        return WindowKey(self.transport_id, self.reason)
+
+    @property
+    def source(self) -> ChannelRef:
+        return ChannelRef(self.transport_id, self.channel)
 
 
 class DropNotifier:
@@ -26,42 +47,45 @@ class DropNotifier:
         self._window = window_seconds
         self._sink = sink
         self._clock = _clock
-        self._counts: dict[tuple[str, str, RejectReason], int] = defaultdict(int)
-        self._last_flush: dict[tuple[str, RejectReason], float] = {}
+        self._counts: dict[DropKey, int] = defaultdict(int)
+        self._last_flush: dict[WindowKey, float] = {}
 
     async def note_reject(
         self, source: ChannelRef, reason: RejectReason, detail: str = ""
     ) -> None:
         """Зарегистрировать отказ; первое за окно уведомляет сразу, дальше — копим."""
         now = self._clock()
-        flush_key = (source.transport_id, reason)
-        last = self._last_flush.get(flush_key)
+        wkey = WindowKey(source.transport_id, reason)
+        last = self._last_flush.get(wkey)
         if last is None or (now - last) >= self._window:
             # первое за окно — уведомляем немедленно, окно открывается
-            self._last_flush[flush_key] = now
-            await self._sink(source, self._format(reason, 1, detail))
+            self._last_flush[wkey] = now
+            await self._sink(source, self.format_notice(reason, 1, detail))
         else:
             # внутри окна — просто накапливаем (хвост уйдёт следующим flush)
-            self._counts[(source.transport_id, source.channel, reason)] += 1
+            self._counts[DropKey(source.transport_id, source.channel, reason)] += 1
 
     async def flush_due(self) -> None:
         """Слить накопленные хвосты по истёкшим окнам (зовётся периодически)."""
         now = self._clock()
-        for (tid, channel, reason), count in list(self._counts.items()):
-            flush_key = (tid, reason)
-            if (now - self._last_flush.get(flush_key, 0)) >= self._window:
-                self._last_flush[flush_key] = now
-                del self._counts[(tid, channel, reason)]
+        for drop_key, count in list(self._counts.items()):
+            wkey = drop_key.window_key
+            if (now - self._last_flush.get(wkey, 0)) >= self._window:
+                self._last_flush[wkey] = now
+                del self._counts[drop_key]
                 if count:
-                    await self._sink(ChannelRef(tid, channel), self._format(reason, count, ""))
+                    await self._sink(drop_key.source, self.format_notice(drop_key.reason, count, ""))
 
     @staticmethod
-    def _format(reason: RejectReason, count: int, detail: str) -> str:
-        base = {
-            RejectReason.RATE_LIMIT: "эфир перегружен",
-            RejectReason.TOO_LONG: "сообщение слишком длинное",
-            RejectReason.TTL_EXPIRED: "сообщение устарело в очереди",
-        }[reason]
+    def format_notice(reason: RejectReason, count: int, detail: str) -> str:
+        if reason == RejectReason.RATE_LIMIT:
+            base = "эфир перегружен"
+        elif reason == RejectReason.TOO_LONG:
+            base = "сообщение слишком длинное"
+        elif reason == RejectReason.TTL_EXPIRED:
+            base = "сообщение устарело в очереди"
+        else:
+            raise ValueError(f"неизвестная причина: {reason!r}")
         suffix = f" ({detail})" if detail else ""
         if count > 1:
             return f"⚠️ {base}: отброшено {count} сообщений за окно"

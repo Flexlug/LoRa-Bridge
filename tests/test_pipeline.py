@@ -14,14 +14,14 @@ from lora_bridge.core.queue import CommitQueue
 from lora_bridge.core.routing import LoraMember, MessengerMember, RoomRegistry, RoomRoute
 from lora_bridge.core.status import StatusDispatcher
 from lora_bridge.domain.models import (
-    ChannelRef,
-    DeliveryStatus,
-    Identity,
-    LabelFormat,
-    Message,
-    RateSpec,
+	ChannelRef,
+	DeliveryStatus,
+	Identity,
+	LabelFormat,
+	Message,
+	RateSpec,
 )
-from tests.fakes import LORA_CAPS, MSG_CAPS, FakeTransport
+from tests.fakes import FakeTransport, LORA_CAPS, MSG_CAPS
 
 pytestmark = pytest.mark.anyio
 
@@ -97,13 +97,13 @@ async def test_messenger_to_lora_commit_and_mirror():
     bridge, nodes, _ = await _build([room], {"n1": lora}, messengers)
 
     src = _msg("tg", "-100#42", "привет")
-    await bridge._admit(src)
+    await bridge.admit(src)
 
     # статус источника PENDING, элемент в очереди
     assert m1.statuses[-1][1] == DeliveryStatus.PENDING
 
     await nodes["n1"].queue.close_input()
-    await bridge._build_worker(nodes["n1"]).run()
+    await bridge.build_worker(nodes["n1"]).run()
 
     # ушло в LoRa с префиксом [TG:Alex] (в комнате >1 мессенджера)
     assert len(lora.sent) == 1
@@ -123,10 +123,10 @@ async def test_lora_to_lora_relay():
 
     # сообщение пришло на A → должно уйти на B как есть (без ре-префикса)
     src = _msg("n1", "general", "[Bob] из сети A")
-    await bridge._route_from_lora(src)
+    await bridge.route_from_lora(src)
 
     await nodes["n2"].queue.close_input()
-    await bridge._build_worker(nodes["n2"]).run()
+    await bridge.build_worker(nodes["n2"]).run()
 
     assert len(b.sent) == 1
     assert b.sent[0][1].text == "[Bob] из сети A"   # форвард как есть (§12.1)
@@ -140,13 +140,13 @@ async def test_too_long_rejected_with_notice():
     bridge, nodes, notices = await _build([room], {"n1": lora}, {"tg": m1})
 
     src = _msg("tg", "-100", "x" * 500)
-    await bridge._admit(src)
+    await bridge.admit(src)
 
     assert m1.statuses[-1][1] == DeliveryStatus.REJECTED
     assert notices                                   # уведомление о дропе ушло
     # в очередь ничего не попало
     await nodes["n1"].queue.close_input()
-    await bridge._build_worker(nodes["n1"]).run()
+    await bridge.build_worker(nodes["n1"]).run()
     assert lora.sent == []
 
 
@@ -159,8 +159,8 @@ async def test_rate_limit_rejected():
         [room], {"n1": lora}, {"tg": m1}, capacity=1, rate=RateSpec(1, 60, burst=1)
     )
 
-    await bridge._admit(_msg("tg", "-100", "first", mid="a"))
-    await bridge._admit(_msg("tg", "-100", "second", mid="b"))
+    await bridge.admit(_msg("tg", "-100", "first", mid="a"))
+    await bridge.admit(_msg("tg", "-100", "second", mid="b"))
 
     reject = [s for s in m1.statuses if s[1] == DeliveryStatus.REJECTED]
     assert reject

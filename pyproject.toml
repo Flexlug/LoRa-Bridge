@@ -14,7 +14,7 @@ dependencies = [
     "meshcore>=1.0",       # companion-протокол MeshCore (meshcore_py)
     "aiogram>=3.0",        # Telegram Bot API
     "pydantic>=2.0",       # валидация конфига
-    "pyyaml>=6.0",         # парсинг config.yaml
+    "envyaml>=1.2",        # парсинг config.yaml + подстановка ${ENV_VAR}; тянет pyyaml
     "aiosqlite>=0.19",     # журнал намерений (§11.1)
 ]
 

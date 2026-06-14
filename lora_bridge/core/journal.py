@@ -71,13 +71,13 @@ class SqliteJournal:
             self._db = None
 
     @property
-    def _conn(self) -> aiosqlite.Connection:
+    def conn(self) -> aiosqlite.Connection:
         if self._db is None:
             raise RuntimeError("journal не запущен: вызови start()")
         return self._db
 
     async def record_pending(self, entry: JournalEntry) -> None:
-        await self._conn.execute(
+        await self.conn.execute(
             "INSERT OR REPLACE INTO outbound_journal "
             "(msg_key, origin_transport, origin_chat, origin_msg_id, target_node, "
             " target_endpoint, status, enqueued_at, tx_started_at, payload) "
@@ -88,28 +88,28 @@ class SqliteJournal:
                 entry.enqueued_at, None, entry.payload,
             ),
         )
-        await self._conn.commit()
+        await self.conn.commit()
 
     async def mark_transmitting(self, msg_key: str) -> None:
-        await self._conn.execute(
+        await self.conn.execute(
             "UPDATE outbound_journal SET status=?, tx_started_at=? WHERE msg_key=?",
             (DeliveryStatus.TRANSMITTING.value, self._clock(), msg_key),
         )
-        await self._conn.commit()
+        await self.conn.commit()
 
     async def mark_terminal(self, msg_key: str, status: DeliveryStatus) -> None:
-        await self._conn.execute(
+        await self.conn.execute(
             "UPDATE outbound_journal SET status=? WHERE msg_key=?",
             (status.value, msg_key),
         )
-        await self._conn.commit()
+        await self.conn.commit()
 
     async def prune(self, msg_key: str) -> None:
-        await self._conn.execute("DELETE FROM outbound_journal WHERE msg_key=?", (msg_key,))
-        await self._conn.commit()
+        await self.conn.execute("DELETE FROM outbound_journal WHERE msg_key=?", (msg_key,))
+        await self.conn.commit()
 
     async def recover(self) -> list[JournalEntry]:
-        cur = await self._conn.execute(
+        cur = await self.conn.execute(
             "SELECT msg_key, origin_transport, origin_chat, origin_msg_id, target_node, "
             "target_endpoint, status, enqueued_at, tx_started_at, payload "
             "FROM outbound_journal WHERE status IN (?, ?)",

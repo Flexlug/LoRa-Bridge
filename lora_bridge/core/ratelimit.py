@@ -17,13 +17,13 @@ class TokenBucket:
         self._last = _clock()
 
     def try_consume(self, n: float = 1.0) -> bool:
-        self._top_up()
+        self.top_up()
         if self._tokens >= n:
             self._tokens -= n
             return True
         return False
 
-    def _top_up(self) -> None:
+    def top_up(self) -> None:
         now = self._clock()
         elapsed = now - self._last
         if elapsed > 0:

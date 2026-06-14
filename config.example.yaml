@@ -27,7 +27,6 @@ lora:                                # МАССИВ физических LoRa-н
       drop_notice_window_seconds: 60
       label:
         include_type: auto           # auto | always | never (auto: тег если >1 мессенджера в комнате)
-        format: "[{type}:{nick}] "   # шаблон префикса; {type} опускается по include_type
         max_nick_bytes: 24           # ник усекаем при необходимости; ТЕКСТ — никогда (AD-11)
         on_oversize: reject          # reject (по умолчанию) — НЕ truncate
 

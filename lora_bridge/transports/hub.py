@@ -32,7 +32,7 @@ class Hub:
                 self._subscribers.discard(send)
 
     @contextmanager
-    def _slot(self) -> Iterator[MemoryObjectReceiveStream[Message]]:
+    def slot(self) -> Iterator[MemoryObjectReceiveStream[Message]]:
         send, receive = anyio.create_memory_object_stream[Message](self._buffer_size)
         self._subscribers.add(send)
         try:
@@ -42,6 +42,6 @@ class Hub:
             send.close()
 
     async def subscribe(self) -> AsyncIterator[Message]:
-        with self._slot() as receive:
+        with self.slot() as receive:
             async for msg in receive:
                 yield msg

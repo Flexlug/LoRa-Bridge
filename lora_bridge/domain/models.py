@@ -86,15 +86,15 @@ class SendResult:
     detail: str = ""
 
     @classmethod
-    def success(cls) -> "SendResult":
+    def success(cls) -> SendResult:
         return cls(ok=True)
 
     @classmethod
-    def failure(cls, detail: str = "") -> "SendResult":
+    def failure(cls, detail: str = "") -> SendResult:
         return cls(ok=False, detail=detail)
 
     @classmethod
-    def overloaded(cls, detail: str = "") -> "SendResult":
+    def overloaded(cls, detail: str = "") -> SendResult:
         return cls(ok=False, busy=True, detail=detail)
 
 
@@ -102,7 +102,6 @@ class SendResult:
 class LabelFormat:
     """Параметры сборки префикса ``[тип:ник]`` (§4, конфиг policies.label)."""
     include_type: bool = True
-    template: str = "[{type}:{nick}] "
     max_nick_bytes: int = 24
 
 
@@ -111,4 +110,4 @@ class Room:
     """Логическая комната: один LoRa-эндпоинт ↔ N подписчиков-мессенджеров (§12)."""
     lora_endpoint: str                       # ключ из node.endpoints → ChannelRef.channel
     writable_messenger_count: int            # сколько мессенджеров ПИШУТ в комнату (для AD-10)
-    node_id: str = ""                        # id LoRa-ноды (lora[].id); пусто в unit-тестах transform
+    node_id: str = ""                        # id LoRa-ноды (lora[].id)
