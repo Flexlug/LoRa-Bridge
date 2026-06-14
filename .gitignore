@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Инструменты
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Локальные данные
+*.sqlite
+*.sqlite3
+*.db
+config.yaml          # реальный конфиг с секретами; в репо — только config.example.yaml
+.env
+
+# Редакторы
+.idea/
+.vscode/
+*.swp
