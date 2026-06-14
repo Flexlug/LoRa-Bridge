@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # --- LoRa: соединение ---------------------------------------------------------
 
@@ -121,12 +121,10 @@ class MessengerConfig(BaseModel):
 
 
 # --- Комнаты ------------------------------------------------------------------
-
-
-class Subscriber(BaseModel):
-    transport: str                      # messengers[].id
-    chat: str
-    topic: Optional[str] = None         # None → General (и только он)
+# Комната — группа, где сообщения зеркалятся между участниками. Жёсткий инвариант
+# на форму (§12.1): либо «1 LoRa + N мессенджеров», либо «2 LoRa + 0 мессенджеров»
+# (LoRa↔LoRa). Смешивать второй LoRa с мессенджерами в одной комнате нельзя —
+# семантика префикса/статусов стала бы неоднозначной.
 
 
 class LoraRef(BaseModel):
@@ -134,9 +132,44 @@ class LoraRef(BaseModel):
     endpoint: str                       # ключ из node.endpoints
 
 
+class MessengerSubscriber(BaseModel):
+    model_config = ConfigDict(extra="forbid")   # чёткая дискриминация union'а
+    transport: str                      # messengers[].id
+    chat: str
+    topic: Optional[str] = None         # None → General (и только он)
+
+
+class LoraSubscriber(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    lora: LoraRef                       # LoRa-эндпоинт как подписчик (LoRa↔LoRa)
+
+
+Subscriber = Union[MessengerSubscriber, LoraSubscriber]
+
+
 class RoomConfig(BaseModel):
-    lora: LoraRef                       # node-qualified (имена эндпоинтов уникальны лишь в ноде)
+    lora: LoraRef                       # первичный LoRa-эндпоинт комнаты (node-qualified)
     subscribers: list[Subscriber]
+
+    @model_validator(mode="after")
+    def _enforce_shape(self) -> "RoomConfig":
+        loras = [s for s in self.subscribers if isinstance(s, LoraSubscriber)]
+        msgs = [s for s in self.subscribers if isinstance(s, MessengerSubscriber)]
+        if loras:
+            # Вариант 2: ровно 2 LoRa (первичный + один подписчик), 0 мессенджеров.
+            if len(loras) != 1 or msgs:
+                raise ValueError(
+                    "LoRa↔LoRa-комната допускает ровно один LoRa-подписчик "
+                    "и НИ одного мессенджера (итого 2 LoRa-эндпоинта)"
+                )
+            if loras[0].lora == self.lora:
+                raise ValueError("LoRa-подписчик совпадает с первичным эндпоинтом (self-loop)")
+        elif not msgs:
+            raise ValueError(
+                "у комнаты нет подписчиков: нужен ≥1 мессенджер или один LoRa-эндпоинт"
+            )
+        # Вариант 1 (loras пуст, msgs непуст): 1 LoRa + N мессенджеров — ок.
+        return self
 
 
 # --- Корень -------------------------------------------------------------------

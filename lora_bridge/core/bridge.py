@@ -69,7 +69,7 @@ class Bridge:
                     continue
                 if node.loop_guard.is_echo(msg):
                     continue
-                await self._fanout_to_messengers(msg, exclude=None)
+                await self._route_from_lora(msg)
             else:                                 # пришло из мессенджера
                 await self._admit(msg)
 
@@ -95,13 +95,28 @@ class Bridge:
         await self._status.set(msg.source, msg.id, DeliveryStatus.REJECTED, reason)
         await self._notifier.note_reject(msg.source, reason, detail)   # debounce
 
-    async def _fanout_to_messengers(self, msg: Message, exclude: str | None) -> None:
-        """Зеркалим сообщение во все мессенджеры комнаты, кроме источника (A2).
+    async def _route_from_lora(self, msg: Message) -> None:
+        """RX из LoRa → остальным участникам комнаты (кроме источника).
 
-        TODO(§6): по room.subscribers вызвать messenger.send(target, msg);
-        best-effort, без статуса для зеркал.
+        Форма комнаты взаимоисключающая (валидируется в конфиге, §12.1):
+          - «1 LoRa + N мессенджеров» → mirror в мессенджеры (best-effort, без статуса, A2);
+          - «2 LoRa» (LoRa↔LoRa)      → relay в peer-LoRa через её commit-очередь.
+
+        TODO(§6/§12.1): resolve комнату(ы) по lora-источнику; для каждого члена-
+        мессенджера — messenger.send; для члена-LoRa — self._relay_to_lora(...).
         """
-        raise NotImplementedError("TODO(§6): mirror в подписчиков комнаты")
+        raise NotImplementedError("TODO(§6/§12.1): mirror в мессенджеры / relay в peer-LoRa")
+
+    async def _relay_to_lora(self, target_node_id: str, msg: Message) -> None:
+        """LoRa↔LoRa relay: положить полученный текст в commit-очередь целевой ноды.
+
+        Текст НЕ ре-префиксим — origin-сеть уже атрибутировала автора. Идёт через тот
+        же egress/airtime-контроль (§7). Не влезло в бюджет цели → drop + лог (нет
+        мессенджера для статуса). loop_guard.mark_sent на цели гасит обратное эхо (R8).
+
+        TODO(§12.1): size-check по target.capabilities; node.queue.offer; mark_sent.
+        """
+        raise NotImplementedError("TODO(§12.1): relay в commit-очередь целевой ноды")
 
     def _tag_of(self, transport_id: str) -> str:
         # TODO(§4/D5): тег из конфига транспорта (messengers[].tag/kind), не из текста.
