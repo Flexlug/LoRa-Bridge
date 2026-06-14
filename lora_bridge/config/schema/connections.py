@@ -7,12 +7,12 @@ from pydantic import BaseModel, Field
 
 class UsbConnection(BaseModel):
     type: Literal["usb"]
-    device_id: str          # VID:PID, напр. "0333:0303"
+    device_id: str  # VID:PID, напр. "0333:0303"
 
 
 class SerialConnection(BaseModel):
     type: Literal["serial"]
-    port: str               # /dev/ttyUSB0 / COM3
+    port: str  # /dev/ttyUSB0 / COM3
 
 
 class TcpConnection(BaseModel):

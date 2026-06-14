@@ -2,6 +2,7 @@
 
 Допустимо ТОЛЬКО: «1 LoRa + N мессенджеров» или «2 LoRa + 0 мессенджеров».
 """
+
 import pytest
 from pydantic import ValidationError
 

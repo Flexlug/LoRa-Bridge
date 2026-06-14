@@ -4,6 +4,7 @@
 каналы у неё просто другой ``source``. Адаптер сам решает, как отрисовать
 ``sender + text`` (мессенджер) или превратить в плоскую строку (LoRa).
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -15,7 +16,7 @@ from typing import Optional
 @dataclass(frozen=True)
 class ChannelRef:
     transport_id: str
-    channel: str                     # opaque id эндпоинта; топик — забота адаптера
+    channel: str  # opaque id эндпоинта; топик — забота адаптера
 
 
 def messenger_channel(chat: str, topic: Optional[str]) -> str:
@@ -35,7 +36,7 @@ class Identity:
 
 @dataclass(frozen=True)
 class Message:
-    id: str                          # стабильный id транспорта (для dedup)
+    id: str  # стабильный id транспорта (для dedup)
     source: ChannelRef
     sender: Identity
     text: str
@@ -45,18 +46,18 @@ class Message:
 
 
 class DeliveryStatus(Enum):
-    PENDING = "pending"            # принято в commit-очередь
+    PENDING = "pending"  # принято в commit-очередь
     TRANSMITTING = "transmitting"  # взято воркером, отдано узлу
-    SENT = "sent"                  # commit подтверждён узлом (терминальный успех)
-    REJECTED = "rejected"          # admission отклонил (см. RejectReason)
-    FAILED = "failed"              # нет commit в таймаут / ошибка узла
-    UNKNOWN = "unknown"            # рестарт во время TRANSMITTING — ушло ли, неизвестно (§11.1)
+    SENT = "sent"  # commit подтверждён узлом (терминальный успех)
+    REJECTED = "rejected"  # admission отклонил (см. RejectReason)
+    FAILED = "failed"  # нет commit в таймаут / ошибка узла
+    UNKNOWN = "unknown"  # рестарт во время TRANSMITTING — ушло ли, неизвестно (§11.1)
 
 
 class RejectReason(Enum):
-    TOO_LONG = "too_long"          # префикс+текст > max_text_bytes (НЕ усекаем)
-    RATE_LIMIT = "rate_limit"      # эфир перегружен (token-bucket / очередь полна)
-    TTL_EXPIRED = "ttl_expired"    # протухло в очереди до отправки
+    TOO_LONG = "too_long"  # префикс+текст > max_text_bytes (НЕ усекаем)
+    RATE_LIMIT = "rate_limit"  # эфир перегружен (token-bucket / очередь полна)
+    TTL_EXPIRED = "ttl_expired"  # протухло в очереди до отправки
 
 
 @dataclass(frozen=True)
@@ -70,8 +71,8 @@ class RateSpec:
 class Capabilities:
     max_text_bytes: int
     egress_rate: Optional[RateSpec] = None
-    supports_status_feedback: bool = False   # умеет показать статус (реакция)
-    emits_tx_done: bool = False              # узел отдаёт TX-done (commit); у MeshCore False (§5.1)
+    supports_status_feedback: bool = False  # умеет показать статус (реакция)
+    emits_tx_done: bool = False  # узел отдаёт TX-done (commit); у MeshCore False (§5.1)
 
 
 @dataclass(frozen=True)
@@ -81,6 +82,7 @@ class SendResult:
     ``ok`` — commit достигнут (MSG_OK для каналов / ACK для room_server).
     ``busy`` — очередь узла полна (``TABLE_FULL``): не FAILED, а повтор позже.
     """
+
     ok: bool
     busy: bool = False
     detail: str = ""
@@ -101,6 +103,7 @@ class SendResult:
 @dataclass(frozen=True)
 class LabelFormat:
     """Параметры сборки префикса ``[тип:ник]`` (§4, конфиг policies.label)."""
+
     include_type: bool = True
     max_nick_bytes: int = 24
 
@@ -108,6 +111,7 @@ class LabelFormat:
 @dataclass
 class Room:
     """Логическая комната: один LoRa-эндпоинт ↔ N подписчиков-мессенджеров (§12)."""
-    lora_endpoint: str                       # ключ из node.endpoints → ChannelRef.channel
-    writable_messenger_count: int            # сколько мессенджеров ПИШУТ в комнату (для AD-10)
-    node_id: str = ""                        # id LoRa-ноды (lora[].id)
+
+    lora_endpoint: str  # ключ из node.endpoints → ChannelRef.channel
+    writable_messenger_count: int  # сколько мессенджеров ПИШУТ в комнату (для AD-10)
+    node_id: str = ""  # id LoRa-ноды (lora[].id)

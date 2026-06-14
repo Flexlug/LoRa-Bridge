@@ -1,4 +1,5 @@
 """Тесты сборки LoRa-нагрузки и байтовых лимитов (§4, AD-10/AD-11, D2/D6)."""
+
 from lora_bridge.core.transform import (
     build_lora_text,
     clip_utf8,
@@ -24,7 +25,7 @@ def test_utf8_len_counts_bytes_not_chars():
 
 
 def test_clip_utf8_respects_byte_budget_without_splitting():
-    clipped = clip_utf8("привет", 5)        # 5 байт = 2 символа + «хвост» отброшен
+    clipped = clip_utf8("привет", 5)  # 5 байт = 2 символа + «хвост» отброшен
     assert utf8_len(clipped) <= 5
     assert clipped == "пр"
 

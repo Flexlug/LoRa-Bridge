@@ -11,8 +11,10 @@ lora:                                # МАССИВ физических LoRa-н
     endpoints:
       general:                                       # Public-канал MeshCore (общий PSK), flood без ACK
         type: public
+        channel_name: "General"                      # имя канала из вкладки Channels в MeshCore
       emergency:                                     # Channel со своим secret (приватный), flood без ACK
         type: private
+        channel_name: "Emergency"                    # имя канала из вкладки Channels в MeshCore
         secret: ${MC_EMERGENCY_SECRET}
       ops:                                           # Room Server: direct + login, реальный ACK + backfill
         type: room_server
@@ -37,6 +39,7 @@ lora:                                # МАССИВ физических LoRa-н
     endpoints:
       relay:
         type: public
+        channel_name: "General"
     policies:
       egress_rate: { msgs_per_window: 6, window_seconds: 60 }
 

@@ -6,6 +6,7 @@ LoRa-путь (источник — нода): dedup + loop-guard → мирро
 Несколько нод: каждая = свой транспорт, своя commit-очередь и ОДИН egress-воркер (§6),
 свои dedup/loop-guard и label-формат (политики ноды, §12).
 """
+
 from __future__ import annotations
 
 import logging
@@ -39,6 +40,7 @@ log = logging.getLogger(__name__)
 @dataclass
 class NodeRuntime:
     """Per-node рантайм одной LoRa-ноды (всё, что радио-специфично, §12)."""
+
     transport: Transport
     queue: CommitQueue
     dedup: TtlDedup
@@ -51,9 +53,9 @@ class Bridge:
     def __init__(
         self,
         *,
-        nodes: dict[str, NodeRuntime],        # LoRa-ноды по id (lora[].id)
-        messengers: dict[str, Transport],     # мессенджеры по id
-        tags: dict[str, str],                 # messenger_id → тег префикса ("TG")
+        nodes: dict[str, NodeRuntime],  # LoRa-ноды по id (lora[].id)
+        messengers: dict[str, Transport],  # мессенджеры по id
+        tags: dict[str, str],  # messenger_id → тег префикса ("TG")
         rooms: RoomRegistry,
         status: StatusDispatcher,
         notifier: DropNotifier,
@@ -111,13 +113,13 @@ class Bridge:
     async def consume(self, t: Transport) -> None:
         node = self._nodes.get(t.id)
         async for msg in t.subscribe():
-            if node is not None:                  # пришло из LoRa-ноды
-                if not node.dedup.accept(msg):    # mesh-дубль (A3)
+            if node is not None:  # пришло из LoRa-ноды
+                if not node.dedup.accept(msg):  # mesh-дубль (A3)
                     continue
                 if node.loop_guard.is_echo(msg):  # собственное TX-эхо (A1/R8)
                     continue
                 await self.route_from_lora(msg)
-            else:                                 # пришло из мессенджера
+            else:  # пришло из мессенджера
                 await self.admit(msg)
 
     async def admit(self, msg: Message) -> None:
@@ -127,7 +129,7 @@ class Bridge:
             log.debug("сообщение из %s вне комнат — игнор", msg.source)
             return
         targets = [m for m in room.others(msg.source) if isinstance(m, LoraMember)]
-        if not targets:                            # форма «1 LoRa + N msg» гарантирует один
+        if not targets:  # форма «1 LoRa + N msg» гарантирует один
             return
         await self.enqueue_to_lora(msg, targets[0], room, from_messenger=True)
 
@@ -156,40 +158,53 @@ class Bridge:
             droom = Room(target.endpoint, room.writable_messenger_count, target.node_id)
             text = build_lora_text(src, droom, tag, node.label_fmt)
         else:
-            text = src.text                        # LoRa↔LoRa relay: форвардим как есть (§12.1)
+            text = src.text  # LoRa↔LoRa relay: форвардим как есть (§12.1)
 
         over = oversize_bytes(text, node.transport.capabilities.max_text_bytes)
         if over > 0:
             if from_messenger:
                 await self.reject(src.source, src.id, RejectReason.TOO_LONG, f"+{over} Б")
             else:
-                log.warning("relay %s→%s: текст не влез (+%d Б), drop", src.source, target.ref, over)
+                log.warning(
+                    "relay %s→%s: текст не влез (+%d Б), drop", src.source, target.ref, over
+                )
             return
 
         item = QueueItem(
-            source=src.source, source_msg_id=src.id, target=target.ref,
-            payload=replace(src, text=text), original=src, from_messenger=from_messenger,
+            source=src.source,
+            source_msg_id=src.id,
+            target=target.ref,
+            payload=replace(src, text=text),
+            original=src,
+            from_messenger=from_messenger,
         )
-        if not node.queue.offer(item):             # bounded + rate-limit (§7)
+        if not node.queue.offer(item):  # bounded + rate-limit (§7)
             if from_messenger:
                 await self.reject(src.source, src.id, RejectReason.RATE_LIMIT)
             else:
                 log.warning("relay %s→%s: очередь полна, drop", src.source, target.ref)
             return
 
-        await self._journal.record_pending(JournalEntry(
-            msg_key=f"{src.source.transport_id}:{src.id}",
-            origin_transport=src.source.transport_id, origin_chat=src.source.channel,
-            origin_msg_id=src.id, target_node=target.node_id, target_endpoint=target.endpoint,
-            status=DeliveryStatus.PENDING, enqueued_at=item.enqueued_at,
-            tx_started_at=None, payload=text,
-        ))
+        await self._journal.record_pending(
+            JournalEntry(
+                msg_key=f"{src.source.transport_id}:{src.id}",
+                origin_transport=src.source.transport_id,
+                origin_chat=src.source.channel,
+                origin_msg_id=src.id,
+                target_node=target.node_id,
+                target_endpoint=target.endpoint,
+                status=DeliveryStatus.PENDING,
+                enqueued_at=item.enqueued_at,
+                tx_started_at=None,
+                payload=text,
+            )
+        )
         await self._status.set(src.source, src.id, DeliveryStatus.PENDING)
 
     async def on_committed(self, item: QueueItem) -> None:
         """После commit в LoRa — миррор оригинала остальным мессенджерам (§6, AD-4)."""
         if not item.from_messenger:
-            return                                 # LoRa↔LoRa relay: мессенджеров нет
+            return  # LoRa↔LoRa relay: мессенджеров нет
         room = self._rooms.for_source(item.source)
         if room is None:
             return
@@ -212,7 +227,7 @@ class Bridge:
             return
         try:
             await transport.send(member.ref, msg)  # best-effort, без статуса (A2)
-        except Exception:                          # noqa: BLE001 — миррор не должен валить поток
+        except Exception:  # noqa: BLE001 — миррор не должен валить поток
             log.exception("миррор в %s не удался", member.ref)
 
     async def reject(

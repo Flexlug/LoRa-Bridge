@@ -4,6 +4,7 @@
 подписчик получает собственный bounded-буфер; медленный подписчик роняет старейшее
 (B7), а не тормозит остальных.
 """
+
 from __future__ import annotations
 
 from contextlib import contextmanager

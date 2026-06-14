@@ -4,6 +4,7 @@
 знать per-message статус — починить «зависшую» реакцию после рестарта. SQLite:
 in-process, ACID, ноль операционки. Persist-before-act: статус пишем ДО side-effect.
 """
+
 from __future__ import annotations
 
 import time
@@ -46,10 +47,10 @@ class JournalEntry:
 
 class OutboundJournal(Protocol):
     async def record_pending(self, entry: JournalEntry) -> None: ...
-    async def mark_transmitting(self, msg_key: str) -> None: ...   # ДО node.send()!
+    async def mark_transmitting(self, msg_key: str) -> None: ...  # ДО node.send()!
     async def mark_terminal(self, msg_key: str, status: DeliveryStatus) -> None: ...
     async def prune(self, msg_key: str) -> None: ...
-    async def recover(self) -> list[JournalEntry]: ...             # нетерминальные сироты
+    async def recover(self) -> list[JournalEntry]: ...  # нетерминальные сироты
 
 
 class SqliteJournal:
@@ -83,9 +84,16 @@ class SqliteJournal:
             " target_endpoint, status, enqueued_at, tx_started_at, payload) "
             "VALUES (?,?,?,?,?,?,?,?,?,?)",
             (
-                entry.msg_key, entry.origin_transport, entry.origin_chat, entry.origin_msg_id,
-                entry.target_node, entry.target_endpoint, DeliveryStatus.PENDING.value,
-                entry.enqueued_at, None, entry.payload,
+                entry.msg_key,
+                entry.origin_transport,
+                entry.origin_chat,
+                entry.origin_msg_id,
+                entry.target_node,
+                entry.target_endpoint,
+                DeliveryStatus.PENDING.value,
+                entry.enqueued_at,
+                None,
+                entry.payload,
             ),
         )
         await self.conn.commit()
@@ -118,9 +126,16 @@ class SqliteJournal:
         rows = await cur.fetchall()
         return [
             JournalEntry(
-                msg_key=r[0], origin_transport=r[1], origin_chat=r[2], origin_msg_id=r[3],
-                target_node=r[4], target_endpoint=r[5], status=DeliveryStatus(r[6]),
-                enqueued_at=r[7], tx_started_at=r[8], payload=r[9],
+                msg_key=r[0],
+                origin_transport=r[1],
+                origin_chat=r[2],
+                origin_msg_id=r[3],
+                target_node=r[4],
+                target_endpoint=r[5],
+                status=DeliveryStatus(r[6]),
+                enqueued_at=r[7],
+                tx_started_at=r[8],
+                payload=r[9],
             )
             for r in rows
         ]

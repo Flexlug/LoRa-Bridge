@@ -3,6 +3,7 @@
 Проверяем: admission → commit → статусы → post-commit миррор; LoRa↔LoRa relay;
 отказы TOO_LONG / RATE_LIMIT.
 """
+
 import pytest
 
 from lora_bridge.core.bridge import Bridge, NodeRuntime
@@ -14,14 +15,14 @@ from lora_bridge.core.queue import CommitQueue
 from lora_bridge.core.routing import LoraMember, MessengerMember, RoomRegistry, RoomRoute
 from lora_bridge.core.status import StatusDispatcher
 from lora_bridge.domain.models import (
-	ChannelRef,
-	DeliveryStatus,
-	Identity,
-	LabelFormat,
-	Message,
-	RateSpec,
+    ChannelRef,
+    DeliveryStatus,
+    Identity,
+    LabelFormat,
+    Message,
+    RateSpec,
 )
-from tests.fakes import FakeTransport, LORA_CAPS, MSG_CAPS
+from tests.helpers.fakes import FakeTransport, LORA_CAPS, MSG_CAPS
 
 pytestmark = pytest.mark.anyio
 
@@ -66,8 +67,7 @@ async def _build(routes, nodes_transports, messengers, *, capacity=16, rate=Rate
         )
         for nid, t in nodes_transports.items()
     }
-    all_transports = {**{nid: t for nid, t in nodes_transports.items()},
-                      **messengers}
+    all_transports = {**{nid: t for nid, t in nodes_transports.items()}, **messengers}
     notices: list = []
 
     async def sink(ref, text):
@@ -89,11 +89,13 @@ async def test_messenger_to_lora_commit_and_mirror():
     lora = FakeTransport("n1", LORA_CAPS)
     m1 = FakeTransport("tg", MSG_CAPS)
     messengers = {"tg": m1}
-    room = RoomRoute(members=(
-        LoraMember("n1", "emergency"),
-        MessengerMember("tg", "-100", "42"),
-        MessengerMember("tg", "-200", None),
-    ))
+    room = RoomRoute(
+        members=(
+            LoraMember("n1", "emergency"),
+            MessengerMember("tg", "-100", "42"),
+            MessengerMember("tg", "-200", None),
+        )
+    )
     bridge, nodes, _ = await _build([room], {"n1": lora}, messengers)
 
     src = _msg("tg", "-100#42", "привет")
@@ -129,12 +131,12 @@ async def test_lora_to_lora_relay():
     await bridge.build_worker(nodes["n2"]).run()
 
     assert len(b.sent) == 1
-    assert b.sent[0][1].text == "[Bob] из сети A"   # форвард как есть (§12.1)
-    assert a.sent == []                              # обратно на A не уходит
+    assert b.sent[0][1].text == "[Bob] из сети A"  # форвард как есть (§12.1)
+    assert a.sent == []  # обратно на A не уходит
 
 
 async def test_too_long_rejected_with_notice():
-    lora = FakeTransport("n1", LORA_CAPS)   # max_text_bytes=150
+    lora = FakeTransport("n1", LORA_CAPS)  # max_text_bytes=150
     m1 = FakeTransport("tg", MSG_CAPS)
     room = RoomRoute(members=(LoraMember("n1", "emergency"), MessengerMember("tg", "-100", None)))
     bridge, nodes, notices = await _build([room], {"n1": lora}, {"tg": m1})
@@ -143,7 +145,7 @@ async def test_too_long_rejected_with_notice():
     await bridge.admit(src)
 
     assert m1.statuses[-1][1] == DeliveryStatus.REJECTED
-    assert notices                                   # уведомление о дропе ушло
+    assert notices  # уведомление о дропе ушло
     # в очередь ничего не попало
     await nodes["n1"].queue.close_input()
     await bridge.build_worker(nodes["n1"]).run()

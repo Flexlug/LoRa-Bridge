@@ -19,7 +19,7 @@ class ReconnectBackoff(BaseModel):
 class LabelPolicy(BaseModel):
     include_type: Literal["auto", "always", "never"] = "auto"
     max_nick_bytes: int = 24
-    on_oversize: Literal["reject"] = "reject"   # НЕ truncate (AD-11)
+    on_oversize: Literal["reject"] = "reject"  # НЕ truncate (AD-11)
 
 
 class NodePolicies(BaseModel):
