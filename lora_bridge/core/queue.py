@@ -13,8 +13,8 @@ from typing import AsyncIterator, Optional
 import anyio
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 
-from ..domain.models import ChannelRef, Message, RateSpec
 from .ratelimit import TokenBucket
+from ..domain.models import ChannelRef, Message, RateSpec
 
 
 @dataclass

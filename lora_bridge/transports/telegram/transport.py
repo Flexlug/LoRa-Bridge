@@ -4,14 +4,19 @@
 (``setMessageReaction``), отключённый privacy mode у бота. Канал-эндпоинт
 кодируется как ``chat`` или ``chat#topic`` (см. ``messenger_channel``).
 
-ВНИМАНИЕ: импорт ``aiogram`` ленивый (пакет/ядро импортируются без него). Без
-живого токена адаптер не проверялся — места вызовов API помечены ``# verify``.
+Без живого токена адаптер не проверялся — места вызовов API помечены ``# verify``.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
-from typing import TYPE_CHECKING, AsyncIterator, Optional
+from typing import AsyncIterator, Optional, TYPE_CHECKING
 
+from aiogram import Bot, Dispatcher, F
+from aiogram.types import Message as TgMessage, ReactionTypeEmoji
+
+from ..hub import Hub
+from ...domain.ports import Transport
 from ...domain.models import (
     Capabilities,
     ChannelRef,
@@ -23,14 +28,12 @@ from ...domain.models import (
     SendResult,
     messenger_channel,
 )
-from ..hub import Hub
 
 if TYPE_CHECKING:
-    from ...config.schema import MessengerConfig
+    from ...config.schema import TelegramMessengerConfig
 
 log = logging.getLogger(__name__)
 
-# Статус → эмодзи-реакция (§10).
 STATUS_EMOJI: dict[DeliveryStatus, str] = {
     DeliveryStatus.PENDING: "🕐",
     DeliveryStatus.TRANSMITTING: "📤",
@@ -45,7 +48,7 @@ REJECT_EMOJI: dict[RejectReason, str] = {
 }
 
 
-def _split_channel(channel: str) -> tuple[int, Optional[int]]:
+def split_channel(channel: str) -> tuple[int, Optional[int]]:
     """``"chat"`` / ``"chat#topic"`` → (chat_id, thread_id|None)."""
     if "#" in channel:
         chat, topic = channel.split("#", 1)
@@ -53,7 +56,7 @@ def _split_channel(channel: str) -> tuple[int, Optional[int]]:
     return int(channel), None
 
 
-class TelegramTransport:
+class TelegramTransport(Transport):
     capabilities = Capabilities(
         max_text_bytes=4096,
         egress_rate=RateSpec(20, 60, burst=20),
@@ -61,43 +64,33 @@ class TelegramTransport:
         emits_tx_done=False,
     )
 
-    def __init__(self, transport_id: str, tag: str, config: "MessengerConfig") -> None:
+    _poll_task: asyncio.Task[None] | None = None
+
+    def __init__(self, transport_id: str, tag: str, config: TelegramMessengerConfig) -> None:
         self.id = transport_id
         self.tag = tag
-        self._token = config.token
         self._hub = Hub()
-        self._bot = None
-        self._dp = None
-        self._poll_task = None
+        self._bot = Bot(config.token)
+        self._dp = Dispatcher()
+        self._dp.message.register(self.on_message, F.text)   # verify: фильтр текстовых
 
     async def start(self) -> None:
-        import asyncio
-
-        from aiogram import Bot, Dispatcher, F                # lazy import
-        from aiogram.types import Message as TgMessage
-
-        self._bot = Bot(self._token)
-        self._dp = Dispatcher()
-
-        @self._dp.message(F.text)                             # verify: фильтр текстовых
-        async def _on_message(message: "TgMessage") -> None:
-            await self._hub.publish(self._normalize(message))
-
-        await self._bot.get_me()                              # verify: бот доступен (sanity)
-        # long-polling — собственный цикл aiogram; держим фоновой задачей.
+        me = await self._bot.get_me()                          # verify: бот доступен (sanity)
+        log.info("Telegram-транспорт '%s': бот @%s (id=%d) подключён", self.id, me.username, me.id)
         self._poll_task = asyncio.create_task(
-            self._dp.start_polling(self._bot, handle_signals=False)   # verify
+            self._dp.start_polling(self._bot, handle_signals=False)  # verify
         )
 
     async def stop(self) -> None:
-        if self._dp is not None:
-            await self._dp.stop_polling()                     # verify
+        await self._dp.stop_polling()                          # verify
         if self._poll_task is not None:
             self._poll_task.cancel()
-        if self._bot is not None:
-            await self._bot.session.close()
+        await self._bot.close()                                # verify
 
-    def _normalize(self, message) -> Message:
+    async def on_message(self, message: TgMessage) -> None:
+        await self._hub.publish(self.normalize(message))
+
+    def normalize(self, message: TgMessage) -> Message:
         thread = getattr(message, "message_thread_id", None)
         chat_id = str(message.chat.id)
         user = message.from_user
@@ -112,17 +105,16 @@ class TelegramTransport:
         )
 
     async def send(self, target: ChannelRef, msg: Message) -> SendResult:
-        chat_id, thread_id = _split_channel(target.channel)
-        # системные уведомления моста идут как есть; зеркала — с автором
+        chat_id, thread_id = split_channel(target.channel)
         text = msg.text if msg.sender.transport_uid == "__bridge__" else (
             f"<b>{msg.sender.display_name}</b>: {msg.text}"
         )
         try:
-            await self._bot.send_message(                     # verify
+            await self._bot.send_message(                      # verify
                 chat_id, text, message_thread_id=thread_id, parse_mode="HTML"
             )
             return SendResult.success()
-        except Exception as exc:                              # noqa: BLE001
+        except Exception as exc:                               # noqa: BLE001
             log.exception("Telegram send в %s упал", target.channel)
             return SendResult.failure(str(exc))
 
@@ -136,11 +128,10 @@ class TelegramTransport:
         emoji = REJECT_EMOJI.get(reason) if reason else STATUS_EMOJI.get(status)
         if emoji is None or self._bot is None:
             return
-        chat_id, _ = _split_channel(origin.channel)
+        chat_id, _ = split_channel(origin.channel)
         try:
-            from aiogram.types import ReactionTypeEmoji
-            await self._bot.set_message_reaction(             # verify; идемпотентно (§11.1)
+            await self._bot.set_message_reaction(              # verify; идемпотентно (§11.1)
                 chat_id, int(message_id), reaction=[ReactionTypeEmoji(emoji=emoji)]
             )
-        except Exception:                                     # noqa: BLE001
+        except Exception:                                      # noqa: BLE001
             log.debug("set_message_reaction не удался для %s", message_id, exc_info=True)

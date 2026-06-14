@@ -3,16 +3,16 @@ from __future__ import annotations
 
 from typing import AsyncIterator, Optional
 
-from lora_bridge.transports.hub import Hub
 from lora_bridge.domain.models import (
-    Capabilities,
-    ChannelRef,
-    DeliveryStatus,
-    Message,
-    RateSpec,
-    RejectReason,
-    SendResult,
+	Capabilities,
+	ChannelRef,
+	DeliveryStatus,
+	Message,
+	RateSpec,
+	RejectReason,
+	SendResult,
 )
+from lora_bridge.transports.hub import Hub
 
 LORA_CAPS = Capabilities(
     max_text_bytes=150, egress_rate=RateSpec(100, 60),

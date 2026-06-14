@@ -7,17 +7,25 @@ Commit зависит от типа эндпоинта:
   public / private  → send_chan_msg, commit = MSG_OK  (flood, без доставки)
   room_server       → send_login + send_msg_with_retry, commit = ACK 0x82 (+ backfill)
 
-ВНИМАНИЕ: точные вызовы `meshcore_py` (имена методов/событий) помечены
-``# verify`` — их нужно сверить на живом узле; импорт библиотеки ленивый, чтобы
-пакет и ядро импортировались без неё.
+Точные вызовы `meshcore_py` (имена методов/событий) помечены ``# verify`` —
+их нужно сверить на живом узле.
 """
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
-from enum import Enum
-from typing import TYPE_CHECKING, AsyncIterator, Optional
+from typing import AsyncIterator, Optional, TYPE_CHECKING, assert_never
 
+from meshcore import MeshCore
+from serial.tools import list_ports
+
+from ..hub import Hub
+from ...domain.ports import Transport
+from ...config.schema import (
+    BleConnection, SerialConnection, TcpConnection, UsbConnection,
+    PublicEndpoint, PrivateEndpoint, RoomServerEndpoint,
+)
 from ...domain.models import (
     Capabilities,
     ChannelRef,
@@ -28,31 +36,53 @@ from ...domain.models import (
     RejectReason,
     SendResult,
 )
-from ..hub import Hub
 
 if TYPE_CHECKING:
     from ...config.schema import MeshCoreNode
 
+# Типы событий из meshcore_py (внешняя библиотека — строки, не наши классы).
+EV_CHANNEL_MSG = "CHANNEL_MSG_RECV"
+EV_CONTACT_MSG = "CONTACT_MSG_RECV"
+
 log = logging.getLogger(__name__)
 
 
-class EndpointType(Enum):
-    PUBLIC = "public"
-    PRIVATE = "private"
-    ROOM_SERVER = "room_server"
+@dataclass
+class PublicEndpointState:
+    name: str
+    channel_index: int | None = None   # резолвится в start()
 
 
 @dataclass
-class _Endpoint:
+class PrivateEndpointState:
     name: str
-    type: EndpointType
-    secret: Optional[str] = None
-    pubkey: Optional[str] = None
-    password: Optional[str] = None
-    channel_index: Optional[int] = None   # резолвится для public/private при start()
+    secret: str
+    channel_index: int | None = None   # резолвится в start()
 
 
-class MeshCoreTransport:
+@dataclass
+class RoomServerEndpointState:
+    name: str
+    pubkey: str
+    password: str | None
+
+
+EndpointState = PublicEndpointState | PrivateEndpointState | RoomServerEndpointState
+
+
+def init_endpoint_state(name: str, ep: PublicEndpoint | PrivateEndpoint | RoomServerEndpoint) -> EndpointState:
+    match ep:
+        case PublicEndpoint():
+            return PublicEndpointState(name=name)
+        case PrivateEndpoint():
+            return PrivateEndpointState(name=name, secret=ep.secret)
+        case RoomServerEndpoint():
+            return RoomServerEndpointState(name=name, pubkey=ep.pubkey, password=ep.password)
+        case _ as unreachable:
+            assert_never(unreachable)
+
+
+class MeshCoreTransport(Transport):
     """Адаптер одного MeshCore-узла; обслуживает все его эндпоинты по одному радио."""
 
     capabilities = Capabilities(
@@ -62,19 +92,13 @@ class MeshCoreTransport:
         emits_tx_done=False,
     )
 
-    def __init__(self, node: "MeshCoreNode") -> None:
+    def __init__(self, node: MeshCoreNode) -> None:
         self.id = node.id
-        self._connection = node.connection
+        self.connection = node.connection
         self._hub = Hub()
         self._mc = None                       # объект meshcore.MeshCore
-        self._endpoints: dict[str, _Endpoint] = {
-            name: _Endpoint(
-                name=name,
-                type=EndpointType(ep.type),
-                secret=getattr(ep, "secret", None),
-                pubkey=getattr(ep, "pubkey", None),
-                password=getattr(ep, "password", None),
-            )
+        self._endpoints: dict[str, EndpointState] = {
+            name: init_endpoint_state(name, ep)
             for name, ep in node.endpoints.items()
         }
         self._by_index: dict[int, str] = {}   # channel_index → endpoint name (RX-маршрут)
@@ -83,63 +107,76 @@ class MeshCoreTransport:
     # --- жизненный цикл -------------------------------------------------------
 
     async def start(self) -> None:
-        self._mc = await self._connect()                      # verify: фабрики meshcore_py
-        await self._set_time()                                # R6
+        self._mc = await self.connect()                      # verify: фабрики meshcore_py
+        await self.set_time()                                # R6
         for ep in self._endpoints.values():
-            await self._resolve_endpoint(ep)                  # R3
+            await self.resolve_endpoint(ep)                  # R3
         await self._mc.start_auto_message_fetching()          # verify; R2 / баг #1232
-        self._mc.subscribe(self._on_event)                    # verify: подписка на RX-события
+        self._mc.subscribe(self.on_event)                    # verify: подписка на RX-события
+        log.info("нода '%s' запущена: %d эндпоинтов активно", self.id, len(self._endpoints))
 
     async def stop(self) -> None:
         if self._mc is not None:
             await self._mc.disconnect()                       # verify
             self._mc = None
 
-    async def _connect(self):
-        from meshcore import MeshCore                         # lazy import
-
-        c = self._connection
-        if c.type == "tcp":
-            return await MeshCore.create_tcp(c.host, c.port)  # verify
-        if c.type == "serial":
-            return await MeshCore.create_serial(c.port)       # verify
-        if c.type == "usb":
-            return await MeshCore.create_serial(self._port_by_vidpid(c.device_id))
-        if c.type == "ble":
-            return await MeshCore.create_ble(c.address)       # verify
-        raise ValueError(f"неизвестный тип соединения: {c.type}")
+    async def connect(self):
+        match self.connection:
+            case TcpConnection(host=host, port=port):
+                mc = await MeshCore.create_tcp(host, port)            # verify
+                log.info("нода '%s' подключена: TCP %s:%d", self.id, host, port)
+                return mc
+            case SerialConnection(port=port):
+                mc = await MeshCore.create_serial(port)               # verify
+                log.info("нода '%s' подключена: serial %s", self.id, port)
+                return mc
+            case UsbConnection(device_id=device_id):
+                serial_port = self.port_by_vidpid(device_id)
+                mc = await MeshCore.create_serial(serial_port)
+                log.info("нода '%s' подключена: USB %s (%s)", self.id, device_id, serial_port)
+                return mc
+            case BleConnection(address=address):
+                mc = await MeshCore.create_ble(address)               # verify
+                log.info("нода '%s' подключена: BLE %s", self.id, address)
+                return mc
+            case _ as unreachable:
+                assert_never(unreachable)
 
     @staticmethod
-    def _port_by_vidpid(device_id: str) -> str:
+    def port_by_vidpid(device_id: str) -> str:
         """Найти serial-порт по VID:PID (usb-соединение)."""
-        from serial.tools import list_ports
-
         vid, pid = (int(x, 16) for x in device_id.split(":"))
         for p in list_ports.comports():
             if p.vid == vid and p.pid == pid:
                 return p.device
         raise RuntimeError(f"USB-устройство {device_id} не найдено")
 
-    async def _set_time(self) -> None:
-        import time
+    async def set_time(self) -> None:
         await self._mc.set_time(int(time.time()))             # verify
 
-    async def _resolve_endpoint(self, ep: _Endpoint) -> None:
-        if ep.type in (EndpointType.PUBLIC, EndpointType.PRIVATE):
-            ep.channel_index = await self._resolve_channel_index(ep)
-            self._by_index[ep.channel_index] = ep.name
-        else:  # ROOM_SERVER
-            await self._mc.send_login(ep.pubkey, ep.password or "")   # verify
-            self._by_pubkey[ep.pubkey] = ep.name
+    async def resolve_endpoint(self, ep: EndpointState) -> None:
+        match ep:
+            case PublicEndpointState() | PrivateEndpointState():
+                ep.channel_index = await self.resolve_channel_index(ep)
+                self._by_index[ep.channel_index] = ep.name
+            case RoomServerEndpointState():
+                await self._mc.send_login(ep.pubkey, ep.password or "")   # verify
+                self._by_pubkey[ep.pubkey] = ep.name
+            case _ as unreachable:
+                assert_never(unreachable)
 
-    async def _resolve_channel_index(self, ep: _Endpoint) -> int:
+    async def resolve_channel_index(self, ep: PublicEndpointState | PrivateEndpointState) -> int:
         # verify: перечислить каналы узла, найти по имени/PSK; нет — провизионить.
         # public = индекс 0; для private нужен add-channel с secret.
-        if ep.type == EndpointType.PUBLIC:
-            return 0
-        raise NotImplementedError(
-            f"resolve channel index для private '{ep.name}' (provision PSK) — verify meshcore_py"
-        )
+        match ep:
+            case PublicEndpointState():
+                return 0
+            case PrivateEndpointState():
+                raise NotImplementedError(
+                    f"resolve channel index для private '{ep.name}' (provision PSK) — verify meshcore_py"
+                )
+            case _ as unreachable:
+                assert_never(unreachable)
 
     # --- отправка -------------------------------------------------------------
 
@@ -148,17 +185,20 @@ class MeshCoreTransport:
         if ep is None:
             return SendResult.failure(f"неизвестный эндпоинт {target.channel}")
         try:
-            if ep.type in (EndpointType.PUBLIC, EndpointType.PRIVATE):
-                res = await self._mc.send_chan_msg(ep.channel_index, msg.text)   # verify; commit=MSG_OK
-            else:
-                res = await self._mc.send_msg_with_retry(ep.pubkey, msg.text)    # verify; commit=ACK
-            return self._classify(res)
+            match ep:
+                case PublicEndpointState() | PrivateEndpointState():
+                    res = await self._mc.send_chan_msg(ep.channel_index, msg.text)   # verify; commit=MSG_OK
+                case RoomServerEndpointState():
+                    res = await self._mc.send_msg_with_retry(ep.pubkey, msg.text)    # verify; commit=ACK
+                case _ as unreachable:
+                    assert_never(unreachable)
+            return self.classify(res)
         except Exception as exc:                              # noqa: BLE001
             log.exception("MeshCore send в %s упал", target.channel)
             return SendResult.failure(str(exc))
 
     @staticmethod
-    def _classify(res) -> SendResult:
+    def classify(res) -> SendResult:
         # verify: маппинг ответа meshcore_py. TABLE_FULL → busy (R4), ok → success.
         if getattr(res, "table_full", False):
             return SendResult.overloaded()
@@ -171,18 +211,18 @@ class MeshCoreTransport:
     def subscribe(self) -> AsyncIterator[Message]:
         return self._hub.subscribe()
 
-    async def _on_event(self, event) -> None:
+    async def on_event(self, event) -> None:
         """Нормализовать RX-событие meshcore_py в доменный Message и опубликовать."""
-        msg = self._normalize(event)
+        msg = self.normalize(event)
         if msg is not None:
             await self._hub.publish(msg)
 
-    def _normalize(self, event) -> Optional[Message]:
+    def normalize(self, event) -> Optional[Message]:
         # verify: реальные поля события meshcore_py (тип, channel_index, pubkey, text, sender).
         etype = getattr(event, "type", None)
-        if etype == "CHANNEL_MSG_RECV":
+        if etype == EV_CHANNEL_MSG:
             endpoint = self._by_index.get(getattr(event, "channel", -1))
-        elif etype == "CONTACT_MSG_RECV":
+        elif etype == EV_CONTACT_MSG:
             endpoint = self._by_pubkey.get(getattr(event, "pubkey", ""))
         else:
             return None                                       # ADVERTISEMENT/ACK/чужое — фильтр
