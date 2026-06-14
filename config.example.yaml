@@ -31,12 +31,15 @@ lora:                                # МАССИВ физических LoRa-н
         max_nick_bytes: 24           # ник усекаем при необходимости; ТЕКСТ — никогда (AD-11)
         on_oversize: reject          # reject (по умолчанию) — НЕ truncate
 
-  # Вторую ноду можно добавить здесь (другой радиоузел / другой регион / LoRa↔LoRa).
-  # - id: meshcore-2
-  #   type: meshcore
-  #   connection: { type: tcp, host: 127.0.0.1, port: 5000 }
-  #   endpoints: { relay: { type: public } }
-  #   policies: { egress_rate: { msgs_per_window: 6, window_seconds: 60 } }
+  # Вторая нода — другой радиоузел/регион; здесь же демонстрируем LoRa↔LoRa.
+  - id: meshcore-2
+    type: meshcore
+    connection: { type: tcp, host: 127.0.0.1, port: 5000 }
+    endpoints:
+      relay:
+        type: public
+    policies:
+      egress_rate: { msgs_per_window: 6, window_seconds: 60 }
 
 messengers:
   - id: telegram-main
@@ -46,9 +49,17 @@ messengers:
     # privacy mode у бота ДОЛЖЕН быть отключён (BotFather /setprivacy → Disable)
 
 rooms:
+  # Вариант 1: 1 LoRa + N мессенджеров
   - lora: { node: meshcore-1, endpoint: emergency }   # node-qualified ссылка
     subscribers:
       # topic указан → берём/шлём ТОЛЬКО эту тему
       - { transport: telegram-main, chat: "-1001234567890", topic: "42" }
       # topic опущен → работаем с General (и только с ним, не со всеми темами)
       - { transport: telegram-main, chat: "-1009999999999" }
+
+  # Вариант 2: 2 LoRa, 0 мессенджеров (LoRa↔LoRa) — §12.1.
+  # Эндпоинт другой ноды становится подписчиком; relay идёт через commit-очередь цели.
+  - lora: { node: meshcore-1, endpoint: general }
+    subscribers:
+      - { lora: { node: meshcore-2, endpoint: relay } }
+
