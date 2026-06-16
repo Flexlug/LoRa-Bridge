@@ -86,16 +86,25 @@ export MC_OPS_PW="пароль"             # только если исполь
 
 ```yaml
 # USB (наиболее распространённый вариант)
-connection: { type: usb, device_id: "0403:6015" }
+connection:
+  type: usb
+  device_id: "0403:6015"
 
 # Serial
-connection: { type: serial, port: "/dev/ttyUSB0" }
+connection:
+  type: serial
+  port: "/dev/ttyUSB0"
 
 # TCP (companion запущен как сервер)
-connection: { type: tcp, host: "192.168.1.100", port: 5000 }
+connection:
+  type: tcp
+  host: "192.168.1.100"
+  port: 5000
 
 # BLE
-connection: { type: ble, address: "AA:BB:CC:DD:EE:FF" }
+connection:
+  type: ble
+  address: "AA:BB:CC:DD:EE:FF"
 ```
 
 На Linux пользователь должен состоять в группе `dialout` для доступа к устройству:
@@ -120,13 +129,17 @@ sudo usermod -aG dialout $USER   # затем перелогиниться
 lora:
   - id: meshcore-1
     type: meshcore
-    connection: { type: usb, device_id: "0403:6015" }
+    connection:
+      type: usb
+      device_id: "0403:6015"
     endpoints:
       general:
         type: public
         channel_name: "General"    # имя канала из вкладки Channels в приложении MeshCore
     policies:
-      egress_rate: { msgs_per_window: 6, window_seconds: 60 }
+      egress_rate:
+        msgs_per_window: 6
+        window_seconds: 60
 ```
 
 ---
@@ -140,14 +153,18 @@ lora:
 lora:
   - id: meshcore-1
     type: meshcore
-    connection: { type: usb, device_id: "0403:6015" }
+    connection:
+      type: usb
+      device_id: "0403:6015"
     endpoints:
       ops:
         type: private
         channel_name: "Emergency"  # имя канала из вкладки Channels в приложении MeshCore
         secret: ${MC_OPS_SECRET}   # PSK канала из настроек MeshCore
     policies:
-      egress_rate: { msgs_per_window: 6, window_seconds: 60 }
+      egress_rate:
+        msgs_per_window: 6
+        window_seconds: 60
 ```
 
 ---
@@ -162,14 +179,19 @@ lora:
 lora:
   - id: meshcore-1
     type: meshcore
-    connection: { type: tcp, host: "192.168.1.100", port: 5000 }
+    connection:
+      type: tcp
+      host: "192.168.1.100"
+      port: 5000
     endpoints:
       secure-room:
         type: room_server
         pubkey: "a1b2c3d4e5f6..."   # публичный ключ Room Server из приложения MeshCore
         password: ${MC_ROOM_PW}     # гостевой пароль; опустите поле, если вход без пароля
     policies:
-      egress_rate: { msgs_per_window: 6, window_seconds: 60 }
+      egress_rate:
+        msgs_per_window: 6
+        window_seconds: 60
 ```
 
 ---
@@ -180,9 +202,17 @@ lora:
 
 ```yaml
 endpoints:
-  general:   { type: public,      channel_name: "General" }
-  emergency: { type: private,     channel_name: "Emergency", secret: ${MC_EMERGENCY_SECRET} }
-  ops:       { type: room_server, pubkey: "a1b2c3...", password: ${MC_OPS_PW} }
+  general:
+    type: public
+    channel_name: "General"
+  emergency:
+    type: private
+    channel_name: "Emergency"
+    secret: ${MC_EMERGENCY_SECRET}
+  ops:
+    type: room_server
+    pubkey: "a1b2c3..."
+    password: ${MC_OPS_PW}
 ```
 
 #### Комнаты (`rooms`)
@@ -193,19 +223,30 @@ endpoints:
 
 ```yaml
 rooms:
-  - lora: { node: meshcore-1, endpoint: general }
+  - lora:
+      node: meshcore-1
+      endpoint: general
     subscribers:
-      - { transport: telegram-main, chat: "-1001234567890" }           # General чата
-      - { transport: telegram-main, chat: "-1001234567890", topic: "42" }  # конкретный топик
+      # General чата
+      - transport: telegram-main
+        chat: "-1001234567890"
+      # конкретный топик
+      - transport: telegram-main
+        chat: "-1001234567890"
+        topic: "42"
 ```
 
 **2 LoRa** — мостинг между двумя радиосетями без мессенджеров:
 
 ```yaml
 rooms:
-  - lora: { node: meshcore-1, endpoint: general }
+  - lora:
+      node: meshcore-1
+      endpoint: general
     subscribers:
-      - { lora: { node: meshcore-2, endpoint: relay } }
+      - lora:
+          node: meshcore-2
+          endpoint: relay
 ```
 
 ### 4. Запуск

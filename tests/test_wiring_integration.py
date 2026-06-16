@@ -43,131 +43,223 @@ _CFG_ONE_ROOM = """
 lora:
   - id: mc-1
     type: meshcore
-    connection: { type: tcp, host: "127.0.0.1", port: 5000 }
+    connection:
+      type: tcp
+      host: "127.0.0.1"
+      port: 5000
     endpoints:
-      general: { type: public, channel_name: "General" }
+      general:
+        type: public
+        channel_name: "General"
     policies:
-      egress_rate: { msgs_per_window: 6, window_seconds: 60 }
+      egress_rate:
+        msgs_per_window: 6
+        window_seconds: 60
 messengers:
-  - { id: tg, kind: telegram, token: "123:ABC" }
+  - id: tg
+    kind: telegram
+    token: "123:ABC"
 rooms:
-  - lora: { node: mc-1, endpoint: general }
+  - lora:
+      node: mc-1
+      endpoint: general
     subscribers:
-      - { transport: tg, chat: "-100" }
+      - transport: tg
+        chat: "-100"
 """
 
 _CFG_TIGHT_RATE = """
 lora:
   - id: mc-1
     type: meshcore
-    connection: { type: tcp, host: "127.0.0.1", port: 5000 }
+    connection:
+      type: tcp
+      host: "127.0.0.1"
+      port: 5000
     endpoints:
-      general: { type: public, channel_name: "General" }
+      general:
+        type: public
+        channel_name: "General"
     policies:
-      egress_rate: { msgs_per_window: 1, window_seconds: 60 }
+      egress_rate:
+        msgs_per_window: 1
+        window_seconds: 60
 messengers:
-  - { id: tg, kind: telegram, token: "123:ABC" }
+  - id: tg
+    kind: telegram
+    token: "123:ABC"
 rooms:
-  - lora: { node: mc-1, endpoint: general }
+  - lora:
+      node: mc-1
+      endpoint: general
     subscribers:
-      - { transport: tg, chat: "-100" }
+      - transport: tg
+        chat: "-100"
 """
 
 _CFG_SHORT_TTL = """
 lora:
   - id: mc-1
     type: meshcore
-    connection: { type: tcp, host: "127.0.0.1", port: 5000 }
+    connection:
+      type: tcp
+      host: "127.0.0.1"
+      port: 5000
     endpoints:
-      general: { type: public, channel_name: "General" }
+      general:
+        type: public
+        channel_name: "General"
     policies:
-      egress_rate: { msgs_per_window: 6, window_seconds: 60 }
+      egress_rate:
+        msgs_per_window: 6
+        window_seconds: 60
       queue_ttl_seconds: 0.001
 messengers:
-  - { id: tg, kind: telegram, token: "123:ABC" }
+  - id: tg
+    kind: telegram
+    token: "123:ABC"
 rooms:
-  - lora: { node: mc-1, endpoint: general }
+  - lora:
+      node: mc-1
+      endpoint: general
     subscribers:
-      - { transport: tg, chat: "-100" }
+      - transport: tg
+        chat: "-100"
 """
 
 _CFG_COMMIT_TIMEOUT = """
 lora:
   - id: mc-1
     type: meshcore
-    connection: { type: tcp, host: "127.0.0.1", port: 5000 }
+    connection:
+      type: tcp
+      host: "127.0.0.1"
+      port: 5000
     endpoints:
-      general: { type: public, channel_name: "General" }
+      general:
+        type: public
+        channel_name: "General"
     policies:
-      egress_rate: { msgs_per_window: 6, window_seconds: 60 }
+      egress_rate:
+        msgs_per_window: 6
+        window_seconds: 60
       commit_timeout_seconds: 0.01
 messengers:
-  - { id: tg, kind: telegram, token: "123:ABC" }
+  - id: tg
+    kind: telegram
+    token: "123:ABC"
 rooms:
-  - lora: { node: mc-1, endpoint: general }
+  - lora:
+      node: mc-1
+      endpoint: general
     subscribers:
-      - { transport: tg, chat: "-100" }
+      - transport: tg
+        chat: "-100"
 """
 
 _CFG_TWO_TG_SUBS = """
 lora:
   - id: mc-1
     type: meshcore
-    connection: { type: tcp, host: "127.0.0.1", port: 5000 }
+    connection:
+      type: tcp
+      host: "127.0.0.1"
+      port: 5000
     endpoints:
-      general: { type: public, channel_name: "General" }
+      general:
+        type: public
+        channel_name: "General"
     policies:
-      egress_rate: { msgs_per_window: 6, window_seconds: 60 }
+      egress_rate:
+        msgs_per_window: 6
+        window_seconds: 60
 messengers:
-  - { id: tg, kind: telegram, token: "123:ABC" }
+  - id: tg
+    kind: telegram
+    token: "123:ABC"
 rooms:
-  - lora: { node: mc-1, endpoint: general }
+  - lora:
+      node: mc-1
+      endpoint: general
     subscribers:
-      - { transport: tg, chat: "-100" }
-      - { transport: tg, chat: "-200" }
+      - transport: tg
+        chat: "-100"
+      - transport: tg
+        chat: "-200"
 """
 
 _CFG_LABEL_NEVER = """
 lora:
   - id: mc-1
     type: meshcore
-    connection: { type: tcp, host: "127.0.0.1", port: 5000 }
+    connection:
+      type: tcp
+      host: "127.0.0.1"
+      port: 5000
     endpoints:
-      general: { type: public, channel_name: "General" }
+      general:
+        type: public
+        channel_name: "General"
     policies:
-      egress_rate: { msgs_per_window: 6, window_seconds: 60 }
+      egress_rate:
+        msgs_per_window: 6
+        window_seconds: 60
       label:
         include_type: never
 messengers:
-  - { id: tg, kind: telegram, token: "123:ABC" }
+  - id: tg
+    kind: telegram
+    token: "123:ABC"
 rooms:
-  - lora: { node: mc-1, endpoint: general }
+  - lora:
+      node: mc-1
+      endpoint: general
     subscribers:
-      - { transport: tg, chat: "-100" }
-      - { transport: tg, chat: "-200" }
+      - transport: tg
+        chat: "-100"
+      - transport: tg
+        chat: "-200"
 """
 
 _CFG_LORA_TO_LORA = """
 lora:
   - id: mc-1
     type: meshcore
-    connection: { type: tcp, host: "127.0.0.1", port: 5000 }
+    connection:
+      type: tcp
+      host: "127.0.0.1"
+      port: 5000
     endpoints:
-      ch: { type: public, channel_name: "General" }
+      ch:
+        type: public
+        channel_name: "General"
     policies:
-      egress_rate: { msgs_per_window: 6, window_seconds: 60 }
+      egress_rate:
+        msgs_per_window: 6
+        window_seconds: 60
   - id: mc-2
     type: meshcore
-    connection: { type: tcp, host: "127.0.0.1", port: 5001 }
+    connection:
+      type: tcp
+      host: "127.0.0.1"
+      port: 5001
     endpoints:
-      relay: { type: public, channel_name: "General" }
+      relay:
+        type: public
+        channel_name: "General"
     policies:
-      egress_rate: { msgs_per_window: 6, window_seconds: 60 }
+      egress_rate:
+        msgs_per_window: 6
+        window_seconds: 60
 messengers: []
 rooms:
-  - lora: { node: mc-1, endpoint: ch }
+  - lora:
+      node: mc-1
+      endpoint: ch
     subscribers:
-      - { lora: { node: mc-2, endpoint: relay } }
+      - lora:
+          node: mc-2
+          endpoint: relay
 """
 
 

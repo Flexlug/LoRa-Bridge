@@ -10,11 +10,15 @@ theme:
     - media: "(prefers-color-scheme: light)"
       scheme: default
       primary: indigo
-      toggle: { icon: material/weather-night, name: Тёмная тема }
+      toggle:
+        icon: material/weather-night
+        name: Тёмная тема
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
       primary: indigo
-      toggle: { icon: material/weather-sunny, name: Светлая тема }
+      toggle:
+        icon: material/weather-sunny
+        name: Светлая тема
   features:
     - navigation.sections
     - navigation.indexes

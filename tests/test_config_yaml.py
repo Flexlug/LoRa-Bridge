@@ -33,7 +33,9 @@ FULL = """
 lora:
   - id: mc-1
     type: meshcore
-    connection: { type: usb, device_id: "0403:6015" }
+    connection:
+      type: usb
+      device_id: "0403:6015"
     endpoints:
       general:
         type: public
@@ -47,15 +49,20 @@ lora:
         pubkey: "aabbccddeeff"
         password: "hunter2"
     policies:
-      egress_rate: { msgs_per_window: 6, window_seconds: 60 }
+      egress_rate:
+        msgs_per_window: 6
+        window_seconds: 60
 messengers:
   - id: tg
     kind: telegram
     token: "123:ABC"
 rooms:
-  - lora: { node: mc-1, endpoint: general }
+  - lora:
+      node: mc-1
+      endpoint: general
     subscribers:
-      - { transport: tg, chat: "-100" }
+      - transport: tg
+        chat: "-100"
 """
 
 
@@ -76,44 +83,56 @@ def test_full_config_parses():
 # ---------------------------------------------------------------------------
 
 
-def _cfg_with_conn(conn_yaml: str) -> str:
-    return f"""
-lora:
-  - id: n
-    type: meshcore
-    connection: {conn_yaml}
-    endpoints:
-      ch: {{ type: public, channel_name: "General" }}
-    policies:
-      egress_rate: {{ msgs_per_window: 6, window_seconds: 60 }}
-messengers:
-  - {{ id: tg, kind: telegram, token: "t" }}
-rooms:
-  - lora: {{ node: n, endpoint: ch }}
-    subscribers:
-      - {{ transport: tg, chat: "-1" }}
-"""
+def _cfg_with(*, connection: dict, endpoint: dict | None = None) -> str:
+    """Собрать тестовый конфиг с заданными connection и endpoint, дампнуть в YAML.
+
+    Тесты дальше передают Python-dict'ы, а не YAML-строки — так наглядней
+    и не нужно следить за синтаксисом скобок.
+    """
+    cfg = {
+        "lora": [
+            {
+                "id": "n",
+                "type": "meshcore",
+                "connection": connection,
+                "endpoints": {
+                    "ch": endpoint or {"type": "public", "channel_name": "General"},
+                },
+                "policies": {
+                    "egress_rate": {"msgs_per_window": 6, "window_seconds": 60},
+                },
+            }
+        ],
+        "messengers": [{"id": "tg", "kind": "telegram", "token": "t"}],
+        "rooms": [
+            {
+                "lora": {"node": "n", "endpoint": "ch"},
+                "subscribers": [{"transport": "tg", "chat": "-1"}],
+            }
+        ],
+    }
+    return yaml.safe_dump(cfg, default_flow_style=False, sort_keys=False)
 
 
 def test_connection_usb():
-    cfg = parse(_cfg_with_conn('{ type: usb, device_id: "0403:6015" }'))
+    cfg = parse(_cfg_with(connection={"type": "usb", "device_id": "0403:6015"}))
     assert cfg.lora[0].connection.device_id == "0403:6015"
 
 
 def test_connection_serial():
-    cfg = parse(_cfg_with_conn('{ type: serial, port: "/dev/ttyUSB0" }'))
+    cfg = parse(_cfg_with(connection={"type": "serial", "port": "/dev/ttyUSB0"}))
     assert cfg.lora[0].connection.port == "/dev/ttyUSB0"
 
 
 def test_connection_tcp():
-    cfg = parse(_cfg_with_conn('{ type: tcp, host: "192.168.1.1", port: 5000 }'))
+    cfg = parse(_cfg_with(connection={"type": "tcp", "host": "192.168.1.1", "port": 5000}))
     conn = cfg.lora[0].connection
     assert conn.host == "192.168.1.1"
     assert conn.port == 5000
 
 
 def test_connection_ble():
-    cfg = parse(_cfg_with_conn('{ type: ble, address: "AA:BB:CC:DD:EE:FF" }'))
+    cfg = parse(_cfg_with(connection={"type": "ble", "address": "AA:BB:CC:DD:EE:FF"}))
     assert cfg.lora[0].connection.address == "AA:BB:CC:DD:EE:FF"
 
 
@@ -125,23 +144,40 @@ LORA_TO_LORA = """
 lora:
   - id: mc-1
     type: meshcore
-    connection: { type: usb, device_id: "0403:6015" }
+    connection:
+      type: usb
+      device_id: "0403:6015"
     endpoints:
-      ch: { type: public, channel_name: "General" }
+      ch:
+        type: public
+        channel_name: "General"
     policies:
-      egress_rate: { msgs_per_window: 6, window_seconds: 60 }
+      egress_rate:
+        msgs_per_window: 6
+        window_seconds: 60
   - id: mc-2
     type: meshcore
-    connection: { type: tcp, host: "10.0.0.1", port: 5000 }
+    connection:
+      type: tcp
+      host: "10.0.0.1"
+      port: 5000
     endpoints:
-      relay: { type: public, channel_name: "General" }
+      relay:
+        type: public
+        channel_name: "General"
     policies:
-      egress_rate: { msgs_per_window: 6, window_seconds: 60 }
+      egress_rate:
+        msgs_per_window: 6
+        window_seconds: 60
 messengers: []
 rooms:
-  - lora: { node: mc-1, endpoint: ch }
+  - lora:
+      node: mc-1
+      endpoint: ch
     subscribers:
-      - { lora: { node: mc-2, endpoint: relay } }
+      - lora:
+          node: mc-2
+          endpoint: relay
 """
 
 
@@ -163,9 +199,9 @@ def test_lora_to_lora_config_parses():
 
 def test_room_server_without_password_valid():
     cfg = parse(
-        _cfg_with_conn('{ type: tcp, host: "h", port: 1 }').replace(
-            'ch: { type: public, channel_name: "General" }',
-            'ch: { type: room_server, pubkey: "abc123" }',
+        _cfg_with(
+            connection={"type": "tcp", "host": "h", "port": 1},
+            endpoint={"type": "room_server", "pubkey": "abc123"},
         )
     )
     assert cfg.lora[0].endpoints["ch"].password is None

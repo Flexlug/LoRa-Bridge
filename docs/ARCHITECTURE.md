@@ -762,7 +762,10 @@ LoRa-эндпоинт + его мессенджер-подписчики. Сек
 lora:                                # МАССИВ физических LoRa-нод
   - id: meshcore-1
     type: meshcore                   # тип ноды/прошивки (meshcore | meshtastic*) — фундамент под LoRa↔LoRa
-    connection: { type: usb, device_id: "0333:0303" }   # usb(VID:PID) | serial(port) | tcp(host:port) | ble(address)
+    # connection: usb(VID:PID) | serial(port) | tcp(host:port) | ble(address)
+    connection:
+      type: usb
+      device_id: "0333:0303"
     # endpoints — MAP: ключ = имя эндпоинта (на него ссылается rooms[].lora.endpoint).
     # type — термин из MeshCore-приложения; механика (слоты, PSK, login, ACK) — в адаптере, §5.1.
     endpoints:
@@ -776,10 +779,15 @@ lora:                                # МАССИВ физических LoRa-н
         pubkey: "a1b2c3d4…"
         password: ${MC_OPS_PW}                       # guest-пароль (пусто → read-only)
     policies:                        # политики САМОЙ ноды (радио-специфичны)
-      egress_rate: { msgs_per_window: 6, window_seconds: 60 }   # под duty cycle
+      egress_rate:                                   # под duty cycle
+        msgs_per_window: 6
+        window_seconds: 60
       queue_ttl_seconds: 45                          # admission TTL
       commit_timeout_seconds: 30                     # таймаут ACK (room_server) / send (public/private)
-      reconnect_backoff: { base: 2, max: 60, jitter: true }
+      reconnect_backoff:
+        base: 2
+        max: 60
+        jitter: true
       dedup_ttl_seconds: 300
       drop_notice_window_seconds: 60
       label:
@@ -796,12 +804,17 @@ messengers:
     # privacy mode у бота ДОЛЖЕН быть отключён (BotFather /setprivacy → Disable)
 
 rooms:
-  - lora: { node: meshcore-1, endpoint: emergency }   # node-qualified (имена эндпоинтов уникальны лишь в ноде)
+  - lora:                                # node-qualified (имена эндпоинтов уникальны лишь в ноде)
+      node: meshcore-1
+      endpoint: emergency
     subscribers:
       # topic указан → берём/шлём ТОЛЬКО эту тему
-      - { transport: telegram-main, chat: "-1001234567890", topic: "42" }
+      - transport: telegram-main
+        chat: "-1001234567890"
+        topic: "42"
       # topic опущен → работаем с General (и только с ним, не со всеми темами)
-      - { transport: telegram-main, chat: "-1009999999999" }
+      - transport: telegram-main
+        chat: "-1009999999999"
 ```
 
 > `*meshtastic` — пока только заложенная точка расширения: `type` ноды задаёт
@@ -815,8 +828,8 @@ rooms:
 
 LoRa-эндпоинт может быть **подписчиком** другого — так мост соединяет две LoRa-сети
 (разные пресеты/частоты/регионы, или meshcore↔meshtastic в будущем). В конфиге
-подписчик — это union: либо мессенджер `{ transport, chat, topic? }`, либо LoRa
-`{ lora: { node, endpoint } }`.
+подписчик — это union: либо мессенджер (поля `transport`, `chat`, опциональный
+`topic`), либо LoRa (поле `lora` со вложенными `node` и `endpoint`).
 
 **Жёсткий инвариант на форму комнаты** (валидируется в схеме, §12):
 

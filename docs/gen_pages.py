@@ -43,7 +43,9 @@ LORA_EXAMPLE = """
 lora:
   - id: meshcore-1
     type: meshcore
-    connection: { type: usb, device_id: "0403:6015" }
+    connection:
+      type: usb
+      device_id: "0403:6015"
     endpoints:
       general:
         type: public
@@ -53,7 +55,9 @@ lora:
         channel_name: "Ops"
         secret: ${MC_OPS_SECRET}
     policies:
-      egress_rate: { msgs_per_window: 6, window_seconds: 60 }
+      egress_rate:
+        msgs_per_window: 6
+        window_seconds: 60
 """.strip()
 
 
@@ -85,10 +89,15 @@ LoRa-эндпоинт (`lora` поле) с набором подписчиков
 
 ROOMS_EXAMPLE = """
 rooms:
-  - lora: { node: meshcore-1, endpoint: general }
+  - lora:
+      node: meshcore-1
+      endpoint: general
     subscribers:
-      - { transport: telegram-main, chat: "-1001234567890" }
-      - { transport: telegram-main, chat: "-1001234567890", topic: "42" }
+      - transport: telegram-main
+        chat: "-1001234567890"
+      - transport: telegram-main
+        chat: "-1001234567890"
+        topic: "42"
 """.strip()
 
 
