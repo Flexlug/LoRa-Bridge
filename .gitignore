@@ -15,6 +15,9 @@ venv/
 .coverage
 htmlcov/
 
+# mkdocs build output
+site/
+
 # uv
 uv.lock
 

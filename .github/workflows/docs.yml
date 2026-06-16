@@ -1,0 +1,75 @@
+name: Docs
+
+on:
+  push:
+    branches: [main]
+    # Деплой только если поменялось что-то релевантное доке —
+    # экономит билды на коммитах в адаптеры/тесты.
+    paths:
+      - "lora_bridge/config/**"
+      - "docs/**"
+      - "mkdocs.yml"
+      - "pyproject.toml"
+      - ".github/workflows/docs.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "lora_bridge/config/**"
+      - "docs/**"
+      - "mkdocs.yml"
+      - "pyproject.toml"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+# Деплой Pages требует этих прав на токен джобы.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Чтобы два пуша в main не гонялись за один и тот же сайт.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+
+      - name: Install docs deps
+        run: uv sync --extra docs
+
+      - name: Build site
+        env:
+          # Глушим маркетинговый баннер mkdocs-material про ProperDocs.
+          DISABLE_MKDOCS_2_WARNING: "true"
+        run: uv run mkdocs build --strict
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/
+
+  deploy:
+    # Деплоим только при пуше в main (на PR'ах — только проверка сборки).
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

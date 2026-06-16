@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import logging
+import sys
 
 import anyio
 from envyaml import EnvYAML
+from pydantic import ValidationError
 
+from .config.errors import format_validation_error
 from .config.schema import AppConfig
 from .core.bridge import Bridge
 from .core.journal import SqliteJournal
@@ -82,7 +85,11 @@ async def run(config: AppConfig, settings: Settings) -> None:
 def main() -> None:
     settings = Settings.from_env()
     logging.basicConfig(level=settings.log_level)
-    config = AppConfig.model_validate(dict(EnvYAML(settings.config_path)))
+    try:
+        config = AppConfig.model_validate(dict(EnvYAML(settings.config_path)))
+    except ValidationError as exc:
+        sys.stderr.write(format_validation_error(exc))
+        sys.exit(2)
     anyio.run(run, config, settings)
 
 
