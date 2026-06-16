@@ -1,0 +1,55 @@
+site_name: LoRa-Bridge
+site_description: Двунаправленный мост LoRa ↔ мессенджеры
+repo_url: https://github.com/Flexlug/LoRa-Bridge
+docs_dir: docs
+
+theme:
+  name: material
+  language: ru
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      toggle: { icon: material/weather-night, name: Тёмная тема }
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      toggle: { icon: material/weather-sunny, name: Светлая тема }
+  features:
+    - navigation.sections
+    - navigation.indexes
+    - navigation.tracking
+    - content.code.copy
+    - content.code.annotate
+
+plugins:
+  - search
+  - gen-files:
+      scripts:
+        - docs/gen_pages.py
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [.]
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - toc:
+      permalink: true
+
+nav:
+  - Главная: index.md
+  - Конфиг:
+      - Обзор: config/index.md
+      - "Секция lora": config/lora.md
+      - "Секция messengers": config/messengers.md
+      - "Секция rooms": config/rooms.md
+      - "Типы-ссылки": config/types.md
+  - Архитектура: ARCHITECTURE.md
