@@ -1,7 +1,8 @@
-"""Типы эндпоинтов MeshCore (§5.1).
+"""Типы эндпоинтов MeshCore (§5.1 архитектуры).
 
-Discriminated union по ``type`` — конфиг самодокументируем, нет скрытых правил
-вида «есть pubkey ⇒ room server».
+Дискриминированный union по полю ``type`` делает конфиг самодокументируемым:
+никаких скрытых правил вида «есть pubkey ⇒ room server» — структура
+определяется явным тегом.
 """
 
 from __future__ import annotations
@@ -12,23 +13,57 @@ from pydantic import BaseModel, Field
 
 
 class PublicEndpoint(BaseModel):
-    type: Literal["public"]  # Public channel — общий PSK, flood без ACK
-    channel_name: str  # Имя канала в MeshCore (вкладка Channels в приложении)
+    """Публичный канал MeshCore (общий PSK, flood без ACK).
+
+    Подходит для общего чата. Доставка не гарантируется.
+    """
+
+    type: Literal["public"] = Field(description="Тег дискриминатора — должно быть ``public``.")
+    channel_name: str = Field(
+        description="Имя канала из вкладки Channels в приложении MeshCore."
+    )
 
 
 class PrivateEndpoint(BaseModel):
-    type: Literal["private"]  # Channel со своим secret, flood без ACK
-    channel_name: str  # Имя канала в MeshCore (вкладка Channels в приложении)
-    secret: str
+    """Приватный канал MeshCore (собственный PSK, flood без ACK).
+
+    Подходит для закрытых рабочих групп. Доставка не гарантируется (flood-режим).
+    """
+
+    type: Literal["private"] = Field(description="Тег дискриминатора — должно быть ``private``.")
+    channel_name: str = Field(
+        description="Имя канала из вкладки Channels в приложении MeshCore."
+    )
+    secret: str = Field(description="PSK канала из настроек MeshCore.")
 
 
 class RoomServerEndpoint(BaseModel):
-    type: Literal["room_server"]  # Room Server — direct + login, реальный ACK + backfill
-    pubkey: str
-    password: Optional[str] = None  # пусто → read-only (постинг недоступен)
+    """Room Server — адресная доставка с реальным ACK и backfill.
+
+    В отличие от ``public``/``private`` гарантирует доставку (есть delivery-ACK
+    ``0x82``) и подтягивает пропущенные сообщения при переподключении.
+    """
+
+    type: Literal["room_server"] = Field(
+        description="Тег дискриминатора — должно быть ``room_server``."
+    )
+    pubkey: str = Field(
+        description="Публичный ключ Room Server из приложения MeshCore."
+    )
+    password: Optional[str] = Field(
+        default=None,
+        description=(
+            "Гостевой пароль. Если опущен — доступ read-only (постинг недоступен)."
+        ),
+    )
 
 
 Endpoint = Annotated[
     Union[PublicEndpoint, PrivateEndpoint, RoomServerEndpoint],
     Field(discriminator="type"),
 ]
+"""Тип LoRa-эндпоинта в MeshCore-ноде.
+
+Дискриминирован по ``type``: ``public`` | ``private`` | ``room_server``.
+См. §5.1 архитектуры — для каждого типа commit имеет разную семантику.
+"""
