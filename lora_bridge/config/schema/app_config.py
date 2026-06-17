@@ -21,6 +21,19 @@ def validate_lora_ref(
         raise ValueError(f"{where}: у ноды '{ref.node}' нет эндпоинта '{ref.endpoint}'")
 
 
+def _msg_key(sub: MessengerSubscriber) -> tuple[str, str, str | None]:
+    """Канонический ключ мессенджер-подписчика для проверки уникальности между Room."""
+    return (sub.transport, sub.chat, sub.topic)
+
+
+def _msg_label(sub: MessengerSubscriber) -> str:
+    return f"{sub.transport}:{sub.chat}" + (f"#{sub.topic}" if sub.topic else "")
+
+
+def _lora_label(ref: LoraRef) -> str:
+    return f"{ref.node}/{ref.endpoint}"
+
+
 class AppConfig(BaseModel):
     """Корень конфига приложения. Соответствует целому файлу ``config.yaml``.
 
@@ -78,6 +91,53 @@ class AppConfig(BaseModel):
                             raise ValueError(
                                 f"rooms[{i}].subscribers: неизвестный мессенджер '{s.transport}'"
                             )
+                    case _ as unreachable:
+                        assert_never(unreachable)
+        return self
+
+    @model_validator(mode="after")
+    def validate_unique_membership(self) -> AppConfig:
+        """Один и тот же ChannelRef не может состоять более чем в одной Room.
+
+        Сейчас модель маршрутизации — биекция ``ChannelRef → Room`` (см.
+        ``RoomRegistry`` и AD-4): admission из мессенджера ищет ровно одну
+        комнату по источнику, журнал нумерует намерения по ``transport:msg_id``
+        без учёта target_node, статус-фидбек одно-значный. Поэтому общий чат
+        между двумя LoRa-нодами в текущей итерации НЕ поддержан — это точка
+        роста, см. §12.2 / §14 ARCHITECTURE.md.
+        """
+        msg_first: dict[tuple[str, str, str | None], int] = {}
+        lora_first: dict[tuple[NodeId, EndpointName], tuple[int, str]] = {}
+        for i, room in enumerate(self.rooms):
+            primary = (room.lora.node, room.lora.endpoint)
+            if primary in lora_first:
+                j, _ = lora_first[primary]
+                raise ValueError(
+                    f"LoRa-эндпоинт '{_lora_label(room.lora)}' состоит в нескольких "
+                    f"комнатах: rooms[{j}] и rooms[{i}]"
+                )
+            lora_first[primary] = (i, "lora")
+            for s in room.subscribers:
+                match s:
+                    case MessengerSubscriber():
+                        key = _msg_key(s)
+                        if key in msg_first:
+                            j = msg_first[key]
+                            raise ValueError(
+                                f"мессенджер-канал '{_msg_label(s)}' состоит в нескольких "
+                                f"комнатах: rooms[{j}] и rooms[{i}] — общий чат между "
+                                f"несколькими LoRa-нодами пока не поддержан"
+                            )
+                        msg_first[key] = i
+                    case LoraSubscriber():
+                        sub_key = (s.lora.node, s.lora.endpoint)
+                        if sub_key in lora_first:
+                            j, _ = lora_first[sub_key]
+                            raise ValueError(
+                                f"LoRa-эндпоинт '{_lora_label(s.lora)}' состоит в "
+                                f"нескольких комнатах: rooms[{j}] и rooms[{i}]"
+                            )
+                        lora_first[sub_key] = (i, "subscriber")
                     case _ as unreachable:
                         assert_never(unreachable)
         return self
