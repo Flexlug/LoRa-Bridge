@@ -37,9 +37,9 @@ class BaseMessengerConfig(BaseModel):
 class TelegramMessengerConfig(BaseMessengerConfig):
     """Конфиг Telegram-бота.
 
-    .. note::
-       У бота должен быть **отключён** privacy mode (BotFather → ``/setprivacy``
-       → ``Disable``), иначе он не видит сообщения в группах, только команды.
+    !!! note
+        У бота должен быть **отключён** privacy mode (BotFather → ``/setprivacy``
+        → ``Disable``), иначе он не видит сообщения в группах, только команды.
     """
 
     kind: Literal["telegram"] = Field(

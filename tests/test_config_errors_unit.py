@@ -220,9 +220,17 @@ _TINY_BAD = """
 lora:
   - id: n1
     type: meshcore
-    connection: { type: tcp, port: 5050 }
-    endpoints: { ch: { type: public, channel_name: G } }
-    policies: { egress_rate: { msgs_per_window: 6, window_seconds: 60 } }
+    connection:
+      type: tcp
+      port: 5050
+    endpoints:
+      ch:
+        type: public
+        channel_name: G
+    policies:
+      egress_rate:
+        msgs_per_window: 6
+        window_seconds: 60
 messengers: []
 rooms: []
 """
@@ -231,9 +239,16 @@ _TWO_ERRORS = """
 lora:
   - id: n1
     type: meshcore
-    connection: { type: tcp, port: 5050 }
-    endpoints: { ch: { type: public } }
-    policies: { egress_rate: { msgs_per_window: 6, window_seconds: 60 } }
+    connection:
+      type: tcp
+      port: 5050
+    endpoints:
+      ch:
+        type: public
+    policies:
+      egress_rate:
+        msgs_per_window: 6
+        window_seconds: 60
 messengers: []
 rooms: []
 """
@@ -266,13 +281,29 @@ def test_path_uses_yaml_friendly_notation():
 lora:
   - id: n1
     type: meshcore
-    connection: { type: tcp, host: h, port: 1 }
-    endpoints: { ch: { type: public, channel_name: G } }
-    policies: { egress_rate: { msgs_per_window: 6, window_seconds: 60 } }
-messengers: [{ id: tg, kind: telegram, token: t }]
+    connection:
+      type: tcp
+      host: h
+      port: 1
+    endpoints:
+      ch:
+        type: public
+        channel_name: G
+    policies:
+      egress_rate:
+        msgs_per_window: 6
+        window_seconds: 60
+messengers:
+  - id: tg
+    kind: telegram
+    token: t
 rooms:
-  - lora: { node: WRONG, endpoint: ch }
-    subscribers: [{ transport: tg, chat: "-1" }]
+  - lora:
+      node: WRONG
+      endpoint: ch
+    subscribers:
+      - transport: tg
+        chat: "-1"
 """,
             ("Value error,",),
         ),
@@ -284,9 +315,17 @@ rooms:
 lora:
   - id: n1
     type: meshcore
-    connection: { type: bluetooth, address: x }
-    endpoints: { ch: { type: public, channel_name: G } }
-    policies: { egress_rate: { msgs_per_window: 6, window_seconds: 60 } }
+    connection:
+      type: bluetooth
+      address: x
+    endpoints:
+      ch:
+        type: public
+        channel_name: G
+    policies:
+      egress_rate:
+        msgs_per_window: 6
+        window_seconds: 60
 messengers: []
 rooms: []
 """,
@@ -320,9 +359,17 @@ def test_output_layout_is_multiline_with_dash_bullets_and_single_trailing_newlin
 lora:
   - id: n1
     type: meshcore
-    connection: { type: bluetooth, address: x }
-    endpoints: { ch: { type: public, channel_name: G } }
-    policies: { egress_rate: { msgs_per_window: 6, window_seconds: 60 } }
+    connection:
+      type: bluetooth
+      address: x
+    endpoints:
+      ch:
+        type: public
+        channel_name: G
+    policies:
+      egress_rate:
+        msgs_per_window: 6
+        window_seconds: 60
 messengers: []
 rooms: []
 """,
@@ -334,9 +381,18 @@ rooms: []
 lora:
   - id: n1
     type: meshcore
-    connection: { type: tcp, host: h, port: notanint }
-    endpoints: { ch: { type: public, channel_name: G } }
-    policies: { egress_rate: { msgs_per_window: 6, window_seconds: 60 } }
+    connection:
+      type: tcp
+      host: h
+      port: notanint
+    endpoints:
+      ch:
+        type: public
+        channel_name: G
+    policies:
+      egress_rate:
+        msgs_per_window: 6
+        window_seconds: 60
 messengers: []
 rooms: []
 """,
@@ -382,9 +438,16 @@ def test_usb_endpoint_missing_device_id_uses_correct_variant_label():
 lora:
   - id: n1
     type: meshcore
-    connection: { type: usb }
-    endpoints: { ch: { type: public, channel_name: G } }
-    policies: { egress_rate: { msgs_per_window: 6, window_seconds: 60 } }
+    connection:
+      type: usb
+    endpoints:
+      ch:
+        type: public
+        channel_name: G
+    policies:
+      egress_rate:
+        msgs_per_window: 6
+        window_seconds: 60
 messengers: []
 rooms: []
 """

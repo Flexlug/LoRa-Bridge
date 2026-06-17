@@ -16,7 +16,7 @@ Discriminated union'ы спецкейсятся: показываются как
 
 from __future__ import annotations
 
-import textwrap
+import inspect
 import typing
 from typing import Any, Union, get_args, get_origin
 
@@ -25,7 +25,6 @@ from pydantic import BaseModel
 from pydantic.fields import FieldInfo
 
 from lora_bridge.config import schema
-from lora_bridge.config.schema.ids import EndpointName, MessengerId, NodeId
 
 
 # ---------------------------------------------------------------------------
@@ -43,7 +42,9 @@ LORA_EXAMPLE = """
 lora:
   - id: meshcore-1
     type: meshcore
-    connection: { type: usb, device_id: "0403:6015" }
+    connection:
+      type: usb
+      device_id: "0403:6015"
     endpoints:
       general:
         type: public
@@ -53,7 +54,9 @@ lora:
         channel_name: "Ops"
         secret: ${MC_OPS_SECRET}
     policies:
-      egress_rate: { msgs_per_window: 6, window_seconds: 60 }
+      egress_rate:
+        msgs_per_window: 6
+        window_seconds: 60
 """.strip()
 
 
@@ -85,48 +88,15 @@ LoRa-эндпоинт (`lora` поле) с набором подписчиков
 
 ROOMS_EXAMPLE = """
 rooms:
-  - lora: { node: meshcore-1, endpoint: general }
+  - lora:
+      node: meshcore-1
+      endpoint: general
     subscribers:
-      - { transport: telegram-main, chat: "-1001234567890" }
-      - { transport: telegram-main, chat: "-1001234567890", topic: "42" }
-""".strip()
-
-
-CONFIG_OVERVIEW = """
-# Конфиг
-
-`config.yaml` описывает три верхнеуровневых секции — `lora`, `messengers`,
-`rooms`, — которые ссылаются друг на друга по строковым id.
-
-```yaml
-lora: [...]          # массив физических LoRa-нод
-messengers: [...]    # массив мессенджер-транспортов
-rooms: [...]         # массив логических комнат
-```
-
-| Секция | Что описывает | Подробнее |
-|--------|---------------|-----------|
-| `lora` | Физические LoRa-ноды и их каналы | [lora](lora.md) |
-| `messengers` | Мессенджер-транспорты | [messengers](messengers.md) |
-| `rooms` | Привязка каналов к подписчикам | [rooms](rooms.md) |
-
-Секции ссылаются друг на друга строковыми идентификаторами — все они
-[документированы отдельно](types.md), чтобы было видно, кто на что
-указывает.
-
-!!! tip "Подстановка переменных окружения"
-    В YAML работает синтаксис `${ENV_VAR}` через `envyaml`. Секреты
-    держите в переменных окружения, не в файле — это рекомендуемый шаблон.
-""".strip()
-
-
-TYPES_INTRO = """
-# Типы-ссылки между секциями
-
-Идентификаторы, по которым секции ссылаются друг на друга. На уровне типов
-это `NewType` над `str` — pydantic парсит их как обычные строки, mypy ловит
-передачу «не того id» между слоями, а в авто-доке видно, на какую секцию
-ссылка.
+      - transport: telegram-main
+        chat: "-1001234567890"
+      - transport: telegram-main
+        chat: "-1001234567890"
+        topic: "42"
 """.strip()
 
 
@@ -136,9 +106,7 @@ TYPES_INTRO = """
 
 
 def main() -> None:
-    with mkdocs_gen_files.open("config/index.md", "w") as f:
-        f.write(CONFIG_OVERVIEW + "\n")
-
+    # config/index.md — рукописная обзорная страница, генератор её не трогает.
     emit_section_page(
         path="config/lora.md",
         title="Секция `lora:` — массив LoRa-нод",
@@ -160,7 +128,6 @@ def main() -> None:
         yaml_example=ROOMS_EXAMPLE,
         root_model=schema.RoomConfig,
     )
-    emit_types_page()
 
 
 def emit_section_page(
@@ -193,20 +160,6 @@ def emit_section_page(
         f.write("\n".join(parts))
 
 
-def emit_types_page() -> None:
-    parts = [TYPES_INTRO, ""]
-    for nt in (NodeId, EndpointName, MessengerId):
-        nt_any: Any = nt  # NewType — статически не «класс»; докторим через Any
-        parts.append(f"## `{nt_any.__name__}` {{ #{nt_any.__name__} }}")
-        parts.append("")
-        doc = (nt_any.__doc__ or "").strip()
-        if doc:
-            parts.append(doc)
-            parts.append("")
-        parts.append(f"Базовый тип: `{nt_any.__supertype__.__name__}`.")
-        parts.append("")
-    with mkdocs_gen_files.open("config/types.md", "w") as f:
-        f.write("\n".join(parts))
 
 
 # ---------------------------------------------------------------------------
@@ -252,9 +205,13 @@ def _models_in(t: Any) -> list[type[BaseModel]]:
 
 def _render_model(model: type[BaseModel]) -> str:
     out = [f"### `{model.__name__}` {{ #{model.__name__} }}", ""]
-    doc = (model.__doc__ or "").strip()
+    # ``cleandoc`` правильно убирает индентацию class-docstring'а (первую строку
+    # отдельно, остальные — по общему отступу). Без этого блочные конструкции
+    # вида ``!!! note`` остаются с лишними пробелами и mkdocs рендерит их как
+    # код, а не admonition.
+    doc = inspect.cleandoc(model.__doc__ or "")
     if doc:
-        out.append(textwrap.dedent(doc).strip())
+        out.append(doc)
         out.append("")
     out.append("| Поле | Тип | Обязательно | Описание |")
     out.append("|------|-----|-------------|----------|")
@@ -311,7 +268,10 @@ def _pretty_type(t: Any) -> str:
     t = _unwrap_annotated(t)
     sup = getattr(t, "__supertype__", None)
     if sup is not None:
-        return f"[`{t.__name__}`](types.md#{t.__name__})"
+        # NewType — рендерим имя без ссылки: смысл id виден из описания соседних
+        # полей (например, MeshCoreNode.id.description рассказывает, кто на него
+        # ссылается). Отдельной страницы для NewType-алиасов нет.
+        return f"`{t.__name__}`"
     if t is type(None):
         return "`None`"
     if isinstance(t, type):

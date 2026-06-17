@@ -15,11 +15,15 @@ theme:
     - media: "(prefers-color-scheme: light)"
       scheme: default
       primary: indigo
-      toggle: { icon: material/weather-night, name: Тёмная тема }
+      toggle:
+        icon: material/weather-night
+        name: Тёмная тема
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
       primary: indigo
-      toggle: { icon: material/weather-sunny, name: Светлая тема }
+      toggle:
+        icon: material/weather-sunny
+        name: Светлая тема
   features:
     - navigation.sections
     - navigation.indexes
@@ -43,7 +47,12 @@ markdown_extensions:
   - md_in_html
   - tables
   - pymdownx.details
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      # mermaid-блоки: ```mermaid рендерится встроенным движком mkdocs-material.
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.tabbed:
       alternate_style: true
   - toc:
@@ -51,10 +60,15 @@ markdown_extensions:
 
 nav:
   - Главная: index.md
-  - Конфиг:
+  - Установка:
+      - Быстрый старт: install/index.md
+      - Подключение MeshCore: install/meshcore.md
+      - Настройка Telegram-бота: install/telegram.md
+  - Конфигурация:
       - Обзор: config/index.md
-      - "Секция lora": config/lora.md
-      - "Секция messengers": config/messengers.md
-      - "Секция rooms": config/rooms.md
-      - "Типы-ссылки": config/types.md
-  - Архитектура: ARCHITECTURE.md
+      - "Справочник: lora": config/lora.md
+      - "Справочник: messengers": config/messengers.md
+      - "Справочник: rooms": config/rooms.md
+  - Для разработчиков:
+      - Обзор: contributing/index.md
+      - Архитектура: ARCHITECTURE.md
