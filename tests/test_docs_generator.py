@@ -7,7 +7,8 @@
 * Для каждой YAML-секции эмитится соответствующий файл.
 * На странице ``lora`` присутствуют все варианты дискриминированных union'ов
   (connection + endpoint), а не голый ``Union[...]``.
-* Cross-refs c id-полей уходят на ``types.md``.
+* NewType-id (NodeId / EndpointName / MessengerId) рендерятся как имя без
+  внешней ссылки — отдельной types-страницы нет.
 
 Сам mkdocs-gen-files в проде живёт внутри плагина mkdocs; здесь мы импортим
 его как обычный модуль и подменяем ``open`` на in-memory словарь, чтобы
@@ -68,7 +69,6 @@ _EXPECTED_PAGES = [
     "config/lora.md",
     "config/messengers.md",
     "config/rooms.md",
-    "config/types.md",
 ]
 
 
@@ -103,23 +103,17 @@ def test_rooms_page_expands_smart_union_variants(emitted):
         assert f"`{variant}`" in rooms
 
 
-def test_id_fields_link_to_types_page(emitted):
-    """Поля с NewType должны указывать на types.md, а не на текущую страницу."""
+def test_newtype_id_fields_are_rendered_by_name(emitted):
+    """Поля с NewType должны показывать своё семантическое имя — без ссылки
+    куда-либо: отдельной страницы для NewType-алиасов нет."""
     lora = emitted["config/lora.md"]
-    # `id: NodeId` → ссылка вида types.md#NodeId
-    assert "types.md#NodeId" in lora
-    assert "types.md#EndpointName" in lora
+    assert "`NodeId`" in lora
+    assert "`EndpointName`" in lora
     rooms = emitted["config/rooms.md"]
-    assert "types.md#MessengerId" in rooms
-
-
-def test_types_page_lists_all_newtype_aliases(emitted):
-    types_page = emitted["config/types.md"]
-    for name in ("NodeId", "EndpointName", "MessengerId"):
-        # якорь должен быть, чтобы cross-refs резолвились
-        assert f"#{name}" in types_page
-        # и сам заголовок
-        assert f"`{name}`" in types_page
+    assert "`MessengerId`" in rooms
+    # ссылок на types.md быть не должно
+    for page in (lora, rooms):
+        assert "types.md" not in page
 
 
 def test_descriptions_make_it_into_rendered_tables(emitted):

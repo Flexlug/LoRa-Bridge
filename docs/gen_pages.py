@@ -25,7 +25,6 @@ from pydantic import BaseModel
 from pydantic.fields import FieldInfo
 
 from lora_bridge.config import schema
-from lora_bridge.config.schema.ids import EndpointName, MessengerId, NodeId
 
 
 # ---------------------------------------------------------------------------
@@ -101,16 +100,6 @@ rooms:
 """.strip()
 
 
-TYPES_INTRO = """
-# Типы-ссылки между секциями
-
-Идентификаторы, по которым секции ссылаются друг на друга. На уровне типов
-это `NewType` над `str` — pydantic парсит их как обычные строки, mypy ловит
-передачу «не того id» между слоями, а в авто-доке видно, на какую секцию
-ссылка.
-""".strip()
-
-
 # ---------------------------------------------------------------------------
 # Точка входа
 # ---------------------------------------------------------------------------
@@ -139,7 +128,6 @@ def main() -> None:
         yaml_example=ROOMS_EXAMPLE,
         root_model=schema.RoomConfig,
     )
-    emit_types_page()
 
 
 def emit_section_page(
@@ -172,20 +160,6 @@ def emit_section_page(
         f.write("\n".join(parts))
 
 
-def emit_types_page() -> None:
-    parts = [TYPES_INTRO, ""]
-    for nt in (NodeId, EndpointName, MessengerId):
-        nt_any: Any = nt  # NewType — статически не «класс»; докторим через Any
-        parts.append(f"## `{nt_any.__name__}` {{ #{nt_any.__name__} }}")
-        parts.append("")
-        doc = inspect.cleandoc(nt_any.__doc__ or "")
-        if doc:
-            parts.append(doc)
-            parts.append("")
-        parts.append(f"Базовый тип: `{nt_any.__supertype__.__name__}`.")
-        parts.append("")
-    with mkdocs_gen_files.open("config/types.md", "w") as f:
-        f.write("\n".join(parts))
 
 
 # ---------------------------------------------------------------------------
@@ -294,7 +268,10 @@ def _pretty_type(t: Any) -> str:
     t = _unwrap_annotated(t)
     sup = getattr(t, "__supertype__", None)
     if sup is not None:
-        return f"[`{t.__name__}`](types.md#{t.__name__})"
+        # NewType — рендерим имя без ссылки: смысл id виден из описания соседних
+        # полей (например, MeshCoreNode.id.description рассказывает, кто на него
+        # ссылается). Отдельной страницы для NewType-алиасов нет.
+        return f"`{t.__name__}`"
     if t is type(None):
         return "`None`"
     if isinstance(t, type):

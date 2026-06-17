@@ -64,7 +64,6 @@ nav:
       - "Справочник: lora": config/lora.md
       - "Справочник: messengers": config/messengers.md
       - "Справочник: rooms": config/rooms.md
-      - "Типы-ссылки": config/types.md
   - Для разработчиков:
       - Обзор: contributing/index.md
       - Архитектура: ARCHITECTURE.md
