@@ -1,0 +1,146 @@
+# Установка и быстрый старт
+
+Этот гид проведёт от чистой системы до запущенного моста. Ориентировочное время —
+15–30 минут (зависит от того, нужно ли создавать Telegram-бота с нуля).
+
+## Что вам понадобится
+
+* **Операционная система**: Linux, macOS или Windows.
+* **Python 3.11+** — проверить: `python3 --version`.
+* **[uv](https://docs.astral.sh/uv/)** (рекомендуется) или `pip` для установки зависимостей.
+* **Устройство с прошивкой MeshCore** — любое из официально поддерживаемых
+  ([список устройств](https://github.com/ripplebiz/MeshCore)). Может подключаться
+  по USB, serial, TCP или BLE.
+* **Telegram-аккаунт** — чтобы создать бота.
+
+## Шаги
+
+### 1. Установить пакет
+
+```bash
+git clone https://github.com/Flexlug/LoRa-Bridge.git
+cd LoRa-Bridge
+uv sync
+```
+
+Если предпочитаете pip:
+
+```bash
+git clone https://github.com/Flexlug/LoRa-Bridge.git
+cd LoRa-Bridge
+pip install -e ".[dev]"
+```
+
+### 2. Завести Telegram-бота
+
+→ Подробности в **[Настройке Telegram-бота](telegram.md)**.
+
+Короткий чек-лист:
+
+1. В Telegram найти [@BotFather](https://t.me/BotFather), `/newbot` → получить token.
+2. У того же BotFather: `/setprivacy` → выбрать вашего бота → **Disable** (обязательно
+   для групповых чатов).
+3. Добавить бота в нужный чат, дать права администратора.
+4. Узнать `chat_id` чата (см. подробности на странице про Telegram).
+
+### 3. Подготовить MeshCore-устройство
+
+→ Подробности в **[Подключении MeshCore](meshcore.md)**.
+
+Нужно знать одно из:
+
+* `VID:PID` устройства (для USB);
+* путь serial-порта (`/dev/ttyUSB0`, `COM3` и т.п.);
+* хост:порт companion-сервера (для TCP);
+* MAC-адрес (для BLE).
+
+### 4. Создать конфиг
+
+```bash
+cp config.example.yaml config.yaml
+```
+
+Откройте `config.yaml` и заполните под свою установку — VID:PID или порт устройства,
+chat_id из шага 2, имена каналов MeshCore. Поля и их смысл — в разделе
+**[Конфигурация](../config/index.md)**.
+
+### 5. Задать переменные окружения
+
+Секреты **не** держите в `config.yaml`. В YAML работает синтаксис `${ENV_VAR}` —
+ссылайтесь из конфига на переменные окружения, а значения экспортируйте перед
+запуском:
+
+```bash
+export TG_BOT_TOKEN="123456:AAABBB..."
+export MC_EMERGENCY_SECRET="ваш-psk"   # только если используете private-канал
+export MC_OPS_PW="пароль"              # только если используете room_server
+```
+
+### 6. Запустить
+
+```bash
+LORA_BRIDGE_CONFIG=config.yaml lora-bridge
+```
+
+## Настройки приложения через переменные окружения
+
+| Переменная           | По умолчанию          | Назначение                                  |
+|----------------------|-----------------------|---------------------------------------------|
+| `LORA_BRIDGE_CONFIG` | `config.yaml`         | Путь к файлу конфига                        |
+| `LORA_BRIDGE_DB`     | `lora_bridge.sqlite`  | Путь к SQLite-журналу намерений             |
+| `LORA_BRIDGE_LOG`    | `INFO`                | Уровень логов: `DEBUG` / `INFO` / `WARNING` |
+
+## Проверка успешного запуска
+
+При успешном старте в логах появятся строки примерно такого вида:
+
+```
+INFO:lora_bridge.wiring:транспорт ноды 'meshcore-1' создан (3 эндпоинтов)
+INFO:lora_bridge.transports.meshcore.transport:нода 'meshcore-1' подключена: USB 0403:6015 (/dev/ttyACM0)
+INFO:lora_bridge.transports.meshcore.transport:нода 'meshcore-1' запущена: 3 эндпоинтов активно
+INFO:lora_bridge.transports.telegram.transport:Telegram-транспорт 'telegram-main': бот @YourBot (id=123456789) подключён
+```
+
+После этого попробуйте написать в Telegram-чат — сообщение должно появиться в эфире
+LoRa, и наоборот.
+
+## Если что-то пошло не так
+
+### USB-устройство не определяется
+
+* Проверьте `device_id` через `lsusb` (Linux) или Device Manager (Windows).
+* На Linux пользователь должен быть в группе `dialout`:
+  ```bash
+  sudo usermod -aG dialout $USER
+  # перелогиниться
+  ```
+
+### Telegram не отвечает
+
+* Проверьте `token` (он должен идти полностью, формат `123456:AAA...`).
+* Проверьте, что `api.telegram.org` доступен (если у вас закрытая сеть — может нужен прокси).
+
+### Ошибка валидации конфига
+
+* Запустите с `LORA_BRIDGE_LOG=DEBUG`.
+* Ошибки выводятся **в человекочитаемом виде** — с указанием пути в YAML, ожидаемого
+  типа поля и списка допустимых значений. Например:
+  ```
+  Конфиг не прошёл валидацию (1 ошибка):
+
+  1. lora[0].connection
+     — неизвестное значение поля-дискриминатора 'type': 'bluetooth'
+     — допустимые значения: 'usb', 'serial', 'tcp', 'ble'
+  ```
+* Сверьтесь с **[Конфигурацией](../config/index.md)** и образцом `config.example.yaml`.
+
+### Бот не видит сообщения в группе
+
+* Privacy mode у бота должен быть **отключён**: BotFather → `/setprivacy` → ваш бот →
+  **Disable**.
+* Бот должен быть участником чата, желательно с правами админа.
+
+---
+
+→ Дальше: **[Подключение MeshCore](meshcore.md)**, **[Настройка Telegram-бота](telegram.md)**,
+**[Конфигурация](../config/index.md)**.

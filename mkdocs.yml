@@ -55,10 +55,16 @@ markdown_extensions:
 
 nav:
   - Главная: index.md
-  - Конфиг:
+  - Установка:
+      - Быстрый старт: install/index.md
+      - Подключение MeshCore: install/meshcore.md
+      - Настройка Telegram-бота: install/telegram.md
+  - Конфигурация:
       - Обзор: config/index.md
-      - "Секция lora": config/lora.md
-      - "Секция messengers": config/messengers.md
-      - "Секция rooms": config/rooms.md
+      - "Справочник: lora": config/lora.md
+      - "Справочник: messengers": config/messengers.md
+      - "Справочник: rooms": config/rooms.md
       - "Типы-ссылки": config/types.md
-  - Архитектура: ARCHITECTURE.md
+  - Для разработчиков:
+      - Обзор: contributing/index.md
+      - Архитектура: ARCHITECTURE.md

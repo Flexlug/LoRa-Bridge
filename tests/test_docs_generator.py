@@ -63,8 +63,8 @@ def emitted(monkeypatch) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 
+# config/index.md теперь рукописный, генератор его не трогает.
 _EXPECTED_PAGES = [
-    "config/index.md",
     "config/lora.md",
     "config/messengers.md",
     "config/rooms.md",
