@@ -16,7 +16,7 @@ Discriminated union'ы спецкейсятся: показываются как
 
 from __future__ import annotations
 
-import textwrap
+import inspect
 import typing
 from typing import Any, Union, get_args, get_origin
 
@@ -208,7 +208,7 @@ def emit_types_page() -> None:
         nt_any: Any = nt  # NewType — статически не «класс»; докторим через Any
         parts.append(f"## `{nt_any.__name__}` {{ #{nt_any.__name__} }}")
         parts.append("")
-        doc = (nt_any.__doc__ or "").strip()
+        doc = inspect.cleandoc(nt_any.__doc__ or "")
         if doc:
             parts.append(doc)
             parts.append("")
@@ -261,9 +261,13 @@ def _models_in(t: Any) -> list[type[BaseModel]]:
 
 def _render_model(model: type[BaseModel]) -> str:
     out = [f"### `{model.__name__}` {{ #{model.__name__} }}", ""]
-    doc = (model.__doc__ or "").strip()
+    # ``cleandoc`` правильно убирает индентацию class-docstring'а (первую строку
+    # отдельно, остальные — по общему отступу). Без этого блочные конструкции
+    # вида ``!!! note`` остаются с лишними пробелами и mkdocs рендерит их как
+    # код, а не admonition.
+    doc = inspect.cleandoc(model.__doc__ or "")
     if doc:
-        out.append(textwrap.dedent(doc).strip())
+        out.append(doc)
         out.append("")
     out.append("| Поле | Тип | Обязательно | Описание |")
     out.append("|------|-----|-------------|----------|")

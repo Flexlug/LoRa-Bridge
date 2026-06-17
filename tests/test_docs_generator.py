@@ -138,3 +138,18 @@ def test_no_unresolved_python_typing_repr(emitted):
         assert "lora_bridge.config.schema" not in content, (
             f"в {path} утёк fully-qualified путь к модели"
         )
+
+
+def test_class_docstring_admonition_starts_at_column_zero(emitted):
+    """Регрессия: ``!!! note`` в class-docstring'е должен попасть в markdown
+    без отступа (иначе mkdocs рендерит как code block, не admonition).
+
+    Триггер был на TelegramMessengerConfig — у него docstring с indented
+    admonition'ом из-за индентации самого класса.
+    """
+    msg = emitted["config/messengers.md"]
+    # ищем строку, начинающуюся ровно с '!!! note' (без ведущих пробелов)
+    has_note_at_col0 = any(
+        line.startswith("!!! note") for line in msg.splitlines()
+    )
+    assert has_note_at_col0, "admonition '!!! note' не в нулевом столбце:\n" + msg
