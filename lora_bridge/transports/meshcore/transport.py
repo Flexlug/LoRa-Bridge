@@ -311,6 +311,10 @@ class MeshCoreTransport(Transport):
         try:
             match ep:
                 case PublicEndpointState() | PrivateEndpointState():
+                    log.debug(
+                        "нода '%s': send_chan_msg слот=%s текст=%r",
+                        self.id, ep.channel_index, msg.text,
+                    )
                     res = await self._mc.commands.send_chan_msg(ep.channel_index, msg.text)
                 case RoomServerEndpointState():
                     res = await self._mc.commands.send_msg_with_retry(
@@ -318,7 +322,13 @@ class MeshCoreTransport(Transport):
                     )  # verify
                 case _ as unreachable:
                     assert_never(unreachable)
-            return self.classify(res)
+            result = self.classify(res)
+            if not result.ok:
+                log.warning(
+                    "нода '%s': send в %s вернул ошибку: %s (payload=%s)",
+                    self.id, target.channel, result.detail, res.payload,
+                )
+            return result
         except Exception as exc:  # noqa: BLE001
             log.exception("MeshCore send в %s упал", target.channel)
             return SendResult.failure(str(exc))

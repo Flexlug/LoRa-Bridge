@@ -131,6 +131,8 @@ class ReactionDebouncer:
 
         self._tasks.pop(key, None)
         chat_id, message_id = key
+        emoji = reaction[0].emoji if reaction else "[]"
+        log.debug("debouncer: выставляю реакцию %s на сообщение %s/%s", emoji, chat_id, message_id)
         try:
             await bot.set_message_reaction(chat_id, int(message_id), reaction=reaction)
             self._sent.add(key)  # реакция выставлена — теперь clear_now знает что чистить
