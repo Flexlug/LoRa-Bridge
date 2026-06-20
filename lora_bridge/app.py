@@ -39,7 +39,7 @@ async def recover(
         if node is None:
             continue
         payload = Message(id=e.origin_msg_id, source=origin, sender=NOTICE_SENDER, text=e.payload)
-        node.queue.offer(
+        node.queue.put_nowait(
             QueueItem(
                 source=origin,
                 source_msg_id=e.origin_msg_id,

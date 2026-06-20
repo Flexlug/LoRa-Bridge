@@ -73,23 +73,23 @@ class Bridge:
     # --- жизненный цикл -------------------------------------------------------
 
     async def run(self) -> None:
-        all_transports = [
-            *[n.transport for n in self._nodes.values()],
+        all_transports: list[Transport] = [
+            *[node.transport for node in self._nodes.values()],
             *self._messengers.values(),
         ]
-        for t in all_transports:
-            await t.start()
+        for transport in all_transports:
+            await transport.start()
         try:
-            async with anyio.create_task_group() as tg:
-                for t in all_transports:
-                    tg.start_soon(self.consume, t)
-                    tg.start_soon(t.run)  # монитор реконнекта (no-op если не переопределён)
+            async with anyio.create_task_group() as task_group:
+                for transport in all_transports:
+                    task_group.start_soon(self.consume, transport)
+                    task_group.start_soon(transport.run)  # монитор реконнекта
                 for node in self._nodes.values():
-                    tg.start_soon(self.build_worker(node).run)
-                tg.start_soon(self.notify_flush_loop)
+                    task_group.start_soon(self.build_worker(node).run)
+                task_group.start_soon(self.notify_flush_loop)
         finally:
-            for t in reversed(all_transports):
-                await t.stop()
+            for transport in reversed(all_transports):
+                await transport.stop()
 
     def build_worker(self, node: NodeRuntime) -> EgressWorker:
         return EgressWorker(
@@ -154,7 +154,8 @@ class Bridge:
     ) -> None:
         node = self._nodes[target.node_id]
         if from_messenger:
-            tag = self._tags.get(src.source.transport_id, "?")
+            # KeyError здесь = нарушение инварианта wiring (каждый мессенджер имеет тег)
+            tag = self._tags[src.source.transport_id]
             text = build_lora_text(src, room.writable_messenger_count, tag, node.label_fmt)
         else:
             text = src.text  # LoRa↔LoRa relay: форвардим как есть (§12.1)
@@ -165,7 +166,8 @@ class Bridge:
                 await self.reject(src.source, src.id, RejectReason.TOO_LONG, f"+{over} Б")
             else:
                 log.warning(
-                    "relay %s→%s: текст не влез (+%d Б), drop", src.source, target.ref, over
+                    "relay %s→%s: текст не влез (+%d Б), drop: %r",
+                    src.source, target.ref, over, src.text,
                 )
             return
 
@@ -177,7 +179,7 @@ class Bridge:
             original=src,
             from_messenger=from_messenger,
         )
-        if not node.queue.offer(item):  # bounded + rate-limit (§7)
+        if not node.queue.put_nowait(item):  # bounded + rate-limit (§7)
             if from_messenger:
                 await self.reject(src.source, src.id, RejectReason.RATE_LIMIT)
             else:

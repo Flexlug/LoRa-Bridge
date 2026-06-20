@@ -51,7 +51,7 @@ class CommitQueue:
         self._ttl = ttl_seconds
         self._clock = _clock
 
-    def offer(self, item: QueueItem) -> bool:
+    def put_nowait(self, item: QueueItem) -> bool:
         """Поставить в очередь. ``False`` → переполнение/лимит → вызывающий шлёт RATE_LIMIT."""
         if self._bucket is not None and not self._bucket.try_consume():
             return False
