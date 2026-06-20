@@ -37,17 +37,19 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
+# Только эмодзи из whitelist-а Telegram (REACTION_INVALID иначе).
+# Полный список: https://core.telegram.org/bots/api#reactiontypeemoji
 STATUS_EMOJI: dict[DeliveryStatus, str] = {
-    DeliveryStatus.PENDING: "🕐",
-    DeliveryStatus.TRANSMITTING: "📤",
-    DeliveryStatus.SENT: "✅",
-    DeliveryStatus.FAILED: "⚠️",
-    DeliveryStatus.UNKNOWN: "❓",
+    DeliveryStatus.PENDING: "🕊",       # ждёт в очереди
+    DeliveryStatus.TRANSMITTING: "⚡",   # передаётся в эфир
+    DeliveryStatus.SENT: "👍",           # коммит подтверждён
+    DeliveryStatus.FAILED: "😢",         # ошибка TX
+    DeliveryStatus.UNKNOWN: "🤔",        # статус неизвестен после рестарта
 }
 REJECT_EMOJI: dict[RejectReason, str] = {
-    RejectReason.TOO_LONG: "📏",
-    RejectReason.RATE_LIMIT: "🐢",
-    RejectReason.TTL_EXPIRED: "⌛",
+    RejectReason.TOO_LONG: "🤨",        # сообщение не влезло
+    RejectReason.RATE_LIMIT: "🥱",      # эфир перегружен
+    RejectReason.TTL_EXPIRED: "😴",     # протухло в очереди
 }
 
 
