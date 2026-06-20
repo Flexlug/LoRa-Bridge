@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from typing import NamedTuple, assert_never
+from typing import NamedTuple
 
 from .config.schema import (
     AppConfig,
@@ -17,8 +17,8 @@ from .config.schema import (
     MeshCoreNode,
     MessengerConfig,
 )
-from .core.bridge import NodeRuntime
-from .core.notifier import NotifySink
+from .core.bridge import MessengerBinding, NodeRuntime
+from .core.notifier import DropNotifier, NotifySink
 from .core.dedup import TtlDedup
 from .core.loopguard import LoopGuard
 from .core.queue import CommitQueue
@@ -38,9 +38,16 @@ class LoraNodeEntry(NamedTuple):
     runtime: NodeRuntime
 
 
-class MessengerEntry(NamedTuple):
-    transport: Transport
-    tag: str
+class Messengers(NamedTuple):
+    bindings: dict[str, MessengerBinding]
+
+    @property
+    def transports(self) -> dict[str, Transport]:
+        return {mid: b.transport for mid, b in self.bindings.items()}
+
+    @property
+    def tags(self) -> dict[str, str]:
+        return {mid: b.tag for mid, b in self.bindings.items()}
 
 
 class LoraNodes(NamedTuple):
@@ -48,12 +55,7 @@ class LoraNodes(NamedTuple):
     runtimes: dict[str, NodeRuntime]
 
 
-class Messengers(NamedTuple):
-    transports: dict[str, Transport]
-    tags: dict[str, str]
-
-
-def build_node(node: MeshCoreNode) -> LoraNodeEntry:
+def build_node(node: MeshCoreNode, notice_sink: NotifySink) -> LoraNodeEntry:
     log.debug("конструирую ноду %s (%s)", node.id, node.type)
     transport = MeshCoreTransport(node)
     p = node.policies
@@ -69,14 +71,15 @@ def build_node(node: MeshCoreNode) -> LoraNodeEntry:
         loop_guard=LoopGuard(p.dedup_ttl_seconds),
         label_fmt=label,
         commit_timeout=p.commit_timeout_seconds,
+        notifier=DropNotifier(p.drop_notice_window_seconds, notice_sink),
     )
     return LoraNodeEntry(transport, runtime)
 
 
-def build_messenger(cfg: MessengerConfig) -> MessengerEntry:
+def build_messenger(cfg: MessengerConfig) -> MessengerBinding:
     log.debug("конструирую мессенджер %s (%s)", cfg.id, cfg.kind)
     tag = cfg.tag or cfg.kind.upper()[:2]
-    return MessengerEntry(TelegramTransport(cfg.id, cfg), tag)
+    return MessengerBinding(transport=TelegramTransport(cfg.id, cfg), tag=tag)
 
 
 def build_rooms(config: AppConfig) -> RoomRegistry:
@@ -96,16 +99,17 @@ def build_rooms(config: AppConfig) -> RoomRegistry:
                 case MessengerSubscriber():
                     members.append(MessengerMember(sub.transport, sub.chat, sub.topic))
                 case _ as unreachable:
+                    from typing import assert_never
                     assert_never(unreachable)
         routes.append(RoomRoute(members=tuple(members)))
     return RoomRegistry(routes)
 
 
-def build_lora_nodes(config: AppConfig) -> LoraNodes:
+def build_lora_nodes(config: AppConfig, notice_sink: NotifySink) -> LoraNodes:
     transports: dict[str, Transport] = {}
     runtimes: dict[str, NodeRuntime] = {}
     for node_cfg in config.lora:
-        entry = build_node(node_cfg)
+        entry = build_node(node_cfg, notice_sink)
         transports[node_cfg.id] = entry.transport
         runtimes[node_cfg.id] = entry.runtime
         log.info("транспорт ноды '%s' создан (%d эндпоинтов)", node_cfg.id, len(node_cfg.endpoints))
@@ -131,11 +135,9 @@ def build_notice_sink(messenger_transports: dict[str, Transport], sender: Identi
 
 
 def build_messengers(config: AppConfig) -> Messengers:
-    transports: dict[str, Transport] = {}
-    tags: dict[str, str] = {}
+    bindings: dict[str, MessengerBinding] = {}
     for m_cfg in config.messengers:
-        entry = build_messenger(m_cfg)
-        transports[m_cfg.id] = entry.transport
-        tags[m_cfg.id] = entry.tag
-        log.info("транспорт мессенджера '%s' создан (тег: %s)", m_cfg.id, entry.tag)
-    return Messengers(transports, tags)
+        binding = build_messenger(m_cfg)
+        bindings[m_cfg.id] = binding
+        log.info("транспорт мессенджера '%s' создан (тег: %s)", m_cfg.id, binding.tag)
+    return Messengers(bindings=bindings)

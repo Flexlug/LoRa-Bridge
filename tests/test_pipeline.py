@@ -6,7 +6,7 @@
 
 import pytest
 
-from lora_bridge.core.bridge import Bridge, NodeRuntime
+from lora_bridge.core.bridge import Bridge, MessengerBinding, NodeRuntime
 from lora_bridge.core.dedup import TtlDedup
 from lora_bridge.core.journal import SqliteJournal
 from lora_bridge.core.loopguard import LoopGuard
@@ -56,6 +56,11 @@ async def _build(routes, nodes_transports, messengers, *, capacity=16, rate=Rate
     journal = SqliteJournal(":memory:")
     await journal.start()
     _OPEN_JOURNALS.append(journal)
+    notices: list = []
+
+    async def sink(ref, text):
+        notices.append((ref, text))
+
     nodes = {
         nid: NodeRuntime(
             transport=t,
@@ -64,22 +69,19 @@ async def _build(routes, nodes_transports, messengers, *, capacity=16, rate=Rate
             loop_guard=LoopGuard(60),
             label_fmt=LabelFormat(include_type=True, max_nick_bytes=24),
             commit_timeout=5,
+            notifier=DropNotifier(60, sink),
         )
         for nid, t in nodes_transports.items()
     }
-    all_transports = {**{nid: t for nid, t in nodes_transports.items()}, **messengers}
-    notices: list = []
-
-    async def sink(ref, text):
-        notices.append((ref, text))
+    all_transports = {**{nid: t for nid, t in nodes_transports.items()},
+                      **{mid: t for mid, t in messengers.items()}}
+    bindings = {mid: MessengerBinding(transport=t, tag="TG") for mid, t in messengers.items()}
 
     bridge = Bridge(
         nodes=nodes,
-        messengers=messengers,
-        tags={mid: "TG" for mid in messengers},
+        messengers=bindings,
         rooms=RoomRegistry(routes),
         status=StatusDispatcher(all_transports),
-        notifier=DropNotifier(60, sink),
         journal=journal,
     )
     return bridge, nodes, notices

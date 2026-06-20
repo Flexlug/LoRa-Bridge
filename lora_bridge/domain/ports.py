@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import AsyncIterator, Optional
+from typing import AsyncIterator, Optional, Protocol
 
 from .models import (
     Capabilities,
@@ -17,6 +17,15 @@ from .models import (
     RejectReason,
     SendResult,
 )
+
+
+class AdmissionPolicy(Protocol):
+    """Политика допуска сообщений из мессенджера в очередь (точка расширения для модерации).
+
+    Возвращает ``None`` — допустить; ``RejectReason`` — отклонить с этой причиной.
+    """
+
+    async def check(self, msg: Message) -> Optional[RejectReason]: ...
 
 
 class Transport(ABC):

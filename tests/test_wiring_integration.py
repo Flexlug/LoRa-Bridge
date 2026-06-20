@@ -20,12 +20,14 @@ import lora_bridge.wiring as wiring_mod
 from lora_bridge.config.schema import AppConfig
 from lora_bridge.core.bridge import Bridge
 from lora_bridge.core.journal import SqliteJournal
-from lora_bridge.core.notifier import DropNotifier
 from lora_bridge.core.status import StatusDispatcher
-from lora_bridge.domain.models import ChannelRef, DeliveryStatus, Identity, Message, RejectReason
-from lora_bridge.wiring import build_lora_nodes, build_messengers, build_rooms
-
+from lora_bridge.domain.models import (
+    BRIDGE_TRANSPORT_UID, ChannelRef, DeliveryStatus, Identity, Message, RejectReason,
+)
+from lora_bridge.wiring import build_lora_nodes, build_messengers, build_notice_sink, build_rooms
 from tests.helpers.fakes import FakeTransport, LORA_CAPS, MSG_CAPS
+
+_NOTICE_SENDER = Identity(display_name="bridge", transport_uid=BRIDGE_TRANSPORT_UID)
 
 pytestmark = pytest.mark.anyio
 
@@ -290,24 +292,20 @@ def wire_fakes(monkeypatch):
 async def assemble(yaml_text: str) -> tuple[Bridge, dict, SqliteJournal]:
     """Парсинг YAML → wiring → Bridge. Возвращает bridge, runtimes ноды, journal."""
     cfg = AppConfig.model_validate(yaml.safe_load(yaml_text))
-    lora = build_lora_nodes(cfg)
     messengers = build_messengers(cfg)
+    notice_sink = build_notice_sink(messengers.transports, _NOTICE_SENDER)
+    lora = build_lora_nodes(cfg, notice_sink)
 
     journal = SqliteJournal(":memory:")
     await journal.start()
 
     status = StatusDispatcher({**lora.transports, **messengers.transports})
 
-    async def _sink(ref, text):
-        pass
-
     bridge = Bridge(
         nodes=lora.runtimes,
-        messengers=messengers.transports,
-        tags=messengers.tags,
+        messengers=messengers.bindings,
         rooms=build_rooms(cfg),
         status=status,
-        notifier=DropNotifier(60, _sink),
         journal=journal,
     )
     return bridge, lora.runtimes, journal

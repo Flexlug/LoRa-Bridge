@@ -13,7 +13,6 @@ from .config.errors import format_validation_error
 from .config.schema import AppConfig
 from .core.bridge import Bridge
 from .core.journal import SqliteJournal
-from .core.notifier import DropNotifier
 from .core.queue import QueueItem
 from .core.status import StatusDispatcher
 from .domain.models import BRIDGE_TRANSPORT_UID, ChannelRef, DeliveryStatus, Identity, Message
@@ -53,15 +52,12 @@ async def recover(
 
 
 async def run(config: AppConfig, settings: Settings) -> None:
-    lora = build_lora_nodes(config)
+    # Мессенджеры строятся первыми: notice_sink нужен при сборке нод (per-node нотификатор)
     messengers = build_messengers(config)
+    notice_sink = build_notice_sink(messengers.transports, NOTICE_SENDER)
+    lora = build_lora_nodes(config, notice_sink)
 
     status = StatusDispatcher({**lora.transports, **messengers.transports})
-
-    notifier = DropNotifier(
-        config.lora[0].policies.drop_notice_window_seconds,
-        build_notice_sink(messengers.transports, NOTICE_SENDER),
-    )
 
     journal = SqliteJournal(settings.db_path)
     await journal.start()
@@ -69,11 +65,9 @@ async def run(config: AppConfig, settings: Settings) -> None:
 
     bridge = Bridge(
         nodes=lora.runtimes,
-        messengers=messengers.transports,
-        tags=messengers.tags,
+        messengers=messengers.bindings,
         rooms=build_rooms(config),
         status=status,
-        notifier=notifier,
         journal=journal,
     )
     try:

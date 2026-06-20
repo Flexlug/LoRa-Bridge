@@ -1,28 +1,27 @@
 """Сборка и маршрутизация: ingress fan-in, admission, фан-аут (§6, §12.1).
 
 LoRa-путь (источник — нода): dedup + loop-guard → миррор в мессенджеры / relay в peer-LoRa.
-Мессенджер-путь: admission в commit-очередь целевой ноды; post-commit миррор остальным.
+Мессенджер-путь: admission в commit-очередь целевой LoRa-ноды; post-commit миррор остальным.
 
 Несколько нод: каждая = свой транспорт, своя commit-очередь и ОДИН egress-воркер (§6),
-свои dedup/loop-guard и label-формат (политики ноды, §12).
+свои dedup/loop-guard, label-формат и нотификатор дропов (политики ноды, §12).
 """
 
 from __future__ import annotations
 
 import logging
-from typing import assert_never
+from typing import Optional, assert_never
 from dataclasses import dataclass, replace
 
-import anyio
-
 from .dedup import TtlDedup
-from .egress import EgressWorker
+from .egress import RadioWorker
 from .journal import JournalEntry, OutboundJournal
 from .loopguard import LoopGuard
 from .notifier import DropNotifier
 from .queue import CommitQueue, QueueItem
 from .routing import LoraMember, MessengerMember, RoomRegistry, RoomRoute
 from .status import StatusDispatcher
+from .supervisor import Supervisor
 from .transform import build_lora_text, oversize_bytes
 from ..domain.models import (
     ChannelRef,
@@ -31,9 +30,19 @@ from ..domain.models import (
     Message,
     RejectReason,
 )
-from ..domain.ports import Transport
+from ..domain.ports import AdmissionPolicy, Transport
 
 log = logging.getLogger(__name__)
+
+_NOTIFIER_FLUSH_INTERVAL = 30.0
+
+
+@dataclass(frozen=True)
+class MessengerBinding:
+    """Мессенджер-транспорт + тег для форматирования меток (§10/AD-10)."""
+
+    transport: Transport
+    tag: str
 
 
 @dataclass
@@ -46,53 +55,56 @@ class NodeRuntime:
     loop_guard: LoopGuard
     label_fmt: LabelFormat
     commit_timeout: float
+    notifier: DropNotifier  # per-node: своя политика окна уведомлений (P1 LoRa-Bridge-sew)
 
 
 class Bridge:
     def __init__(
         self,
         *,
-        nodes: dict[str, NodeRuntime],  # LoRa-ноды по id (lora[].id)
-        messengers: dict[str, Transport],  # мессенджеры по id
-        tags: dict[str, str],  # messenger_id → тег префикса ("TG")
+        nodes: dict[str, NodeRuntime],
+        messengers: dict[str, MessengerBinding],
         rooms: RoomRegistry,
         status: StatusDispatcher,
-        notifier: DropNotifier,
         journal: OutboundJournal,
-        notify_flush_interval: float = 30.0,
+        admission_policy: Optional[AdmissionPolicy] = None,
     ) -> None:
         self._nodes = nodes
         self._messengers = messengers
-        self._tags = tags
         self._rooms = rooms
         self._status = status
-        self._notifier = notifier
         self._journal = journal
-        self._notify_flush_interval = notify_flush_interval
+        self._admission_policy = admission_policy
 
     # --- жизненный цикл -------------------------------------------------------
 
     async def run(self) -> None:
         all_transports: list[Transport] = [
             *[node.transport for node in self._nodes.values()],
-            *self._messengers.values(),
+            *[binding.transport for binding in self._messengers.values()],
         ]
         for transport in all_transports:
             await transport.start()
+
+        supervisor = Supervisor()
+        for transport in all_transports:
+            supervisor.register(f"consume:{transport.id}", lambda t=transport: self.consume(t))
+            supervisor.register(f"reconnect:{transport.id}", transport.run)
+        for node_id, node in self._nodes.items():
+            supervisor.register(f"egress:{node_id}", self.build_worker(node).run)
+            supervisor.register(
+                f"notifier:{node_id}",
+                lambda n=node: n.notifier.run_flush_loop(_NOTIFIER_FLUSH_INTERVAL),
+            )
+
         try:
-            async with anyio.create_task_group() as task_group:
-                for transport in all_transports:
-                    task_group.start_soon(self.consume, transport)
-                    task_group.start_soon(transport.run)  # монитор реконнекта
-                for node in self._nodes.values():
-                    task_group.start_soon(self.build_worker(node).run)
-                task_group.start_soon(self.notify_flush_loop)
+            await supervisor.run()
         finally:
             for transport in reversed(all_transports):
                 await transport.stop()
 
-    def build_worker(self, node: NodeRuntime) -> EgressWorker:
-        return EgressWorker(
+    def build_worker(self, node: NodeRuntime) -> RadioWorker:
+        return RadioWorker(
             lora=node.transport,
             queue=node.queue,
             loop_guard=node.loop_guard,
@@ -103,16 +115,11 @@ class Bridge:
             on_reject=self.on_reject,
         )
 
-    async def notify_flush_loop(self) -> None:
-        while True:
-            await anyio.sleep(self._notify_flush_interval)
-            await self._notifier.flush_due()
-
     # --- ingress --------------------------------------------------------------
 
-    async def consume(self, t: Transport) -> None:
-        node = self._nodes.get(t.id)
-        async for msg in t.subscribe():
+    async def consume(self, transport: Transport) -> None:
+        node = self._nodes.get(transport.id)
+        async for msg in transport.subscribe():
             if node is not None:  # пришло из LoRa-ноды
                 if not node.dedup.accept(msg):  # mesh-дубль (A3)
                     continue
@@ -131,7 +138,15 @@ class Bridge:
         targets = [m for m in room.others(msg.source) if isinstance(m, LoraMember)]
         if not targets:  # форма «1 LoRa + N msg» гарантирует один
             return
-        await self.enqueue_to_lora(msg, targets[0], room, from_messenger=True)
+        target = targets[0]
+
+        if self._admission_policy is not None:
+            reason = await self._admission_policy.check(msg)
+            if reason is not None:
+                await self.reject(msg.source, msg.id, reason, node_id=target.node_id)
+                return
+
+        await self.enqueue_to_lora(msg, target, room, from_messenger=True)
 
     async def route_from_lora(self, msg: Message) -> None:
         """RX из LoRa → остальным участникам (миррор в мессенджеры / relay в peer-LoRa, §12.1)."""
@@ -155,7 +170,7 @@ class Bridge:
         node = self._nodes[target.node_id]
         if from_messenger:
             # KeyError здесь = нарушение инварианта wiring (каждый мессенджер имеет тег)
-            tag = self._tags[src.source.transport_id]
+            tag = self._messengers[src.source.transport_id].tag
             text = build_lora_text(src, room.writable_messenger_count, tag, node.label_fmt)
         else:
             text = src.text  # LoRa↔LoRa relay: форвардим как есть (§12.1)
@@ -163,7 +178,8 @@ class Bridge:
         over = oversize_bytes(text, node.transport.capabilities.max_text_bytes)
         if over > 0:
             if from_messenger:
-                await self.reject(src.source, src.id, RejectReason.TOO_LONG, f"+{over} Б")
+                await self.reject(src.source, src.id, RejectReason.TOO_LONG, f"+{over} Б",
+                                  node_id=target.node_id)
             else:
                 log.warning(
                     "relay %s→%s: текст не влез (+%d Б), drop: %r",
@@ -181,7 +197,8 @@ class Bridge:
         )
         if not node.queue.put_nowait(item):  # bounded + rate-limit (§7)
             if from_messenger:
-                await self.reject(src.source, src.id, RejectReason.RATE_LIMIT)
+                await self.reject(src.source, src.id, RejectReason.RATE_LIMIT,
+                                  node_id=target.node_id)
             else:
                 log.warning("relay %s→%s: очередь полна, drop", src.source, target.ref)
             return
@@ -216,23 +233,32 @@ class Bridge:
     async def on_reject(self, item: QueueItem, reason: RejectReason) -> None:
         """TTL-протухание в очереди (вызывает egress)."""
         if item.from_messenger:
-            await self.reject(item.source, item.source_msg_id, reason)
+            await self.reject(item.source, item.source_msg_id, reason,
+                              node_id=item.target.transport_id)
         else:
             log.warning("relay %s протух в очереди (%s), drop", item.source, reason)
 
     # --- миррор в мессенджеры -------------------------------------------------
 
     async def mirror_to_messenger(self, member: MessengerMember, msg: Message) -> None:
-        transport = self._messengers.get(member.transport_id)
-        if transport is None:
+        binding = self._messengers.get(member.transport_id)
+        if binding is None:
             return
         try:
-            await transport.send(member.ref, msg)  # best-effort, без статуса (A2)
+            await binding.transport.send(member.ref, msg)  # best-effort, без статуса (A2)
         except Exception:  # noqa: BLE001 — миррор не должен валить поток
             log.exception("миррор в %s не удался", member.ref)
 
     async def reject(
-        self, source: ChannelRef, msg_id: str, reason: RejectReason, detail: str = ""
+        self,
+        source: ChannelRef,
+        msg_id: str,
+        reason: RejectReason,
+        detail: str = "",
+        *,
+        node_id: str,
     ) -> None:
         await self._status.set(source, msg_id, DeliveryStatus.REJECTED, reason)
-        await self._notifier.note_reject(source, reason, detail)
+        node = self._nodes.get(node_id)
+        if node is not None:
+            await node.notifier.note_reject(source, reason, detail)

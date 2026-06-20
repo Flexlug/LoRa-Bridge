@@ -10,6 +10,8 @@ import time
 from collections import defaultdict
 from typing import Awaitable, Callable, NamedTuple
 
+import anyio
+
 from ..domain.models import ChannelRef, RejectReason
 
 # (chat-уведомитель) принимает source и текст; обычно — отправка в мессенджер-источник.
@@ -72,6 +74,12 @@ class DropNotifier:
                 await self._sink(
                     drop_key.source, self.format_notice(drop_key.reason, count, "")
                 )
+
+    async def run_flush_loop(self, interval: float = 30.0) -> None:
+        """Периодически сбрасывать накопленные хвосты дропов (вызывается Supervisor'ом)."""
+        while True:
+            await anyio.sleep(interval)
+            await self.flush_due()
 
     @staticmethod
     def format_notice(reason: RejectReason, count: int, detail: str) -> str:

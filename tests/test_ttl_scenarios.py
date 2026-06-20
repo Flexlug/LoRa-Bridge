@@ -16,7 +16,7 @@ import anyio
 import pytest
 
 import lora_bridge.core.egress as egress_mod
-from lora_bridge.core.bridge import Bridge, NodeRuntime
+from lora_bridge.core.bridge import Bridge, MessengerBinding, NodeRuntime
 from lora_bridge.core.dedup import TtlDedup
 from lora_bridge.core.journal import SqliteJournal
 from lora_bridge.core.loopguard import LoopGuard
@@ -91,6 +91,11 @@ async def build_bridge(
     await journal.start()
     _open_journals.append(journal)
 
+    notices: list[tuple[ChannelRef, str]] = []
+
+    async def sink(ref: ChannelRef, text: str) -> None:
+        notices.append((ref, text))
+
     node = NodeRuntime(
         transport=lora,
         queue=CommitQueue(16, rate, ttl_seconds=queue_ttl),
@@ -98,17 +103,12 @@ async def build_bridge(
         loop_guard=LoopGuard(60),
         label_fmt=LabelFormat(include_type=False, max_nick_bytes=24),
         commit_timeout=commit_timeout,
+        notifier=DropNotifier(notify_window, sink, _clock=notify_clock or time.monotonic),
     )
-
-    notices: list[tuple[ChannelRef, str]] = []
-
-    async def sink(ref: ChannelRef, text: str) -> None:
-        notices.append((ref, text))
 
     bridge = Bridge(
         nodes={"n1": node},
-        messengers={"tg": messenger},
-        tags={"tg": "TG"},
+        messengers={"tg": MessengerBinding(transport=messenger, tag="TG")},
         rooms=RoomRegistry(
             [
                 RoomRoute(
@@ -120,7 +120,6 @@ async def build_bridge(
             ]
         ),
         status=StatusDispatcher({"n1": lora, "tg": messenger}),
-        notifier=DropNotifier(notify_window, sink, _clock=notify_clock or time.monotonic),
         journal=journal,
     )
     return bridge, node, notices

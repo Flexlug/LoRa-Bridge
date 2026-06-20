@@ -24,7 +24,7 @@ BUSY_RETRIES = 3
 BUSY_BACKOFF_S = 1.0
 
 
-class EgressWorker:
+class RadioWorker:
     def __init__(
         self,
         *,
