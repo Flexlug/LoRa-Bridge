@@ -242,13 +242,18 @@ class MeshCoreTransport(Transport):
             raise RuntimeError(f"нода '{self.id}': не удалось получить device info")
         max_channels = device_info.payload.get("max_channels", 8)
 
+        found: list[str] = []
         for idx in range(max_channels):
             ch = await self._mc.commands.get_channel(idx)
             if ch.is_error():
                 break
-            if ch.payload.get("channel_name") == ep.channel_name:
+            name = ch.payload.get("channel_name", "")
+            found.append(name)
+            if name == ep.channel_name:
+                log.debug("нода '%s': канал '%s' → слот %d", self.id, ep.channel_name, idx)
                 return idx
 
+        log.debug("нода '%s': каналы на устройстве: %s", self.id, found)
         raise RuntimeError(
             f"нода '{self.id}': канал '{ep.channel_name}' не найден "
             f"среди {max_channels} слотов устройства"
