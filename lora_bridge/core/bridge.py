@@ -83,6 +83,7 @@ class Bridge:
             async with anyio.create_task_group() as tg:
                 for t in all_transports:
                     tg.start_soon(self.consume, t)
+                    tg.start_soon(t.run)  # монитор реконнекта (no-op если не переопределён)
                 for node in self._nodes.values():
                     tg.start_soon(self.build_worker(node).run)
                 tg.start_soon(self.notify_flush_loop)

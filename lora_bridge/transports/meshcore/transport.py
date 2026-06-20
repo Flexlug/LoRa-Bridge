@@ -18,6 +18,8 @@ import time
 from dataclasses import dataclass
 from typing import AsyncIterator, Optional, TYPE_CHECKING, assert_never
 
+import anyio
+
 from meshcore import MeshCore, EventType as McEventType
 from serial.tools import list_ports
 
@@ -48,6 +50,7 @@ if TYPE_CHECKING:
 
 EV_CHANNEL_MSG = McEventType.CHANNEL_MSG_RECV
 EV_CONTACT_MSG = McEventType.CONTACT_MSG_RECV
+EV_DISCONNECTED = McEventType.DISCONNECTED
 
 log = logging.getLogger(__name__)
 
@@ -111,10 +114,14 @@ class MeshCoreTransport(Transport):
         }
         self._by_index: dict[int, str] = {}  # channel_index → endpoint name (RX-маршрут)
         self._by_pubkey: dict[str, str] = {}  # pubkey prefix → endpoint name (RX room_server)
+        self._stopping: bool = False
+        self._disconnect_ev: anyio.Event | None = None
 
     # --- жизненный цикл -------------------------------------------------------
 
     async def start(self) -> None:
+        # Event создаётся до connect(), чтобы DISCONNECTED не пропустить при немедленном обрыве
+        self._disconnect_ev = anyio.Event()
         self._mc = await self.connect()
         await self.set_time()  # R6
         for ep in self._endpoints.values():
@@ -124,9 +131,52 @@ class MeshCoreTransport(Transport):
         log.info("нода '%s' запущена: %d эндпоинтов активно", self.id, len(self._endpoints))
 
     async def stop(self) -> None:
-        if self._mc is not None:
-            await self._mc.disconnect()  # verify
-            self._mc = None
+        self._stopping = True
+        self._signal_disconnect()  # разбудить run(), чтобы он вышел из ожидания
+        await self._teardown()
+
+    async def run(self) -> None:
+        """Монитор переподключения (M4): ждёт DISCONNECTED и перезапускает start()."""
+        delay = 1.0
+        while not self._stopping:
+            # ждём сигнала обрыва; None — start() ещё не вызывался или упал
+            ev = self._disconnect_ev
+            if ev is not None:
+                await ev.wait()
+            if self._stopping:
+                break
+            log.info("нода '%s': обрыв соединения, повтор через %.0f с", self.id, delay)
+            await anyio.sleep(delay)
+            await self._teardown()
+            try:
+                await self.start()
+                delay = 1.0  # сброс backoff после успешного реконнекта
+                log.info("нода '%s': переподключена", self.id)
+            except anyio.get_cancelled_exc_class():
+                raise
+            except Exception as exc:
+                log.warning("нода '%s': реконнект не удался (%s), следующая попытка через %.0f с", self.id, exc, delay)
+                delay = min(delay * 2, 60.0)
+                # start() уже выставил свежий _disconnect_ev — сбрасываем,
+                # чтобы следующая итерация не зависла на нём
+                self._disconnect_ev = None
+
+    async def _teardown(self) -> None:
+        """Сбросить текущее соединение и routing-таблицы перед реконнектом."""
+        mc, self._mc = self._mc, None
+        self._by_index.clear()
+        self._by_pubkey.clear()
+        if mc is not None:
+            try:
+                await mc.disconnect()  # verify
+            except Exception:
+                pass
+
+    def _signal_disconnect(self) -> None:
+        """Выставить event обрыва (вызывается из on_event или stop)."""
+        ev = self._disconnect_ev
+        if ev is not None and not ev.is_set():
+            ev.set()
 
     async def _connect_mc(self, coro, label: str):
         try:
@@ -206,6 +256,8 @@ class MeshCoreTransport(Transport):
     # --- отправка -------------------------------------------------------------
 
     async def send(self, target: ChannelRef, msg: Message) -> SendResult:
+        if self._mc is None:
+            return SendResult.overloaded()  # реконнект в процессе — egress повторит (не FAILED)
         ep = self._endpoints.get(target.channel)
         if ep is None:
             return SendResult.failure(f"неизвестный эндпоинт {target.channel}")
@@ -241,6 +293,9 @@ class MeshCoreTransport(Transport):
 
     async def on_event(self, event) -> None:
         """Нормализовать RX-событие meshcore_py в доменный Message и опубликовать."""
+        if event.type == EV_DISCONNECTED:
+            self._signal_disconnect()
+            return
         msg = self.normalize(event)
         if msg is not None:
             await self._hub.publish(msg)

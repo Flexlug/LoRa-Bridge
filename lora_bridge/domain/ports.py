@@ -29,6 +29,9 @@ class Transport(ABC):
     @abstractmethod
     async def stop(self) -> None: ...
 
+    async def run(self) -> None:
+        """Монитор переподключения. По умолчанию — no-op (транспорт без реконнекта)."""
+
     # LoRa-адаптер транслирует msg.text как есть (ядро уже собрало префикс);
     # мессенджер-адаптер сам форматирует sender + text.
     # Для LoRa send() резолвится по commit узла, а не по записи в линк (AD-5/§5.1).

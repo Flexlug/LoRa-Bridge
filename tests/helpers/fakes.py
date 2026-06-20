@@ -67,6 +67,9 @@ class FakeTransport:
     async def stop(self) -> None:
         self.started = False
 
+    async def run(self) -> None:
+        pass
+
     async def send(self, target: ChannelRef, msg: Message) -> SendResult:
         if self._delay:
             await anyio.sleep(self._delay)
