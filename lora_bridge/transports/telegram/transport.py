@@ -38,18 +38,23 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 # Только эмодзи из whitelist-а Telegram (REACTION_INVALID иначе).
-# Полный список: https://core.telegram.org/bots/api#reactiontypeemoji
-STATUS_EMOJI: dict[DeliveryStatus, str] = {
-    DeliveryStatus.PENDING: "🕊",       # ждёт в очереди
-    DeliveryStatus.TRANSMITTING: "⚡",   # передаётся в эфир
-    DeliveryStatus.SENT: "👍",           # коммит подтверждён
-    DeliveryStatus.FAILED: "😢",         # ошибка TX
-    DeliveryStatus.UNKNOWN: "🤔",        # статус неизвестен после рестарта
+# Актуальный список — в docstring aiogram.types.ReactionTypeEmoji.emoji.
+#
+# UX: PENDING → 👀 (бот принял), SENT → убрать реакцию (успех = тишина),
+# ошибки и неизвестность → остаются висеть чтобы пользователь заметил.
+# TRANSMITTING пропускается: промежуточный статус, лишний API-вызов.
+# Это также естественно ограничивает частоту вызовов: ≤2 на сообщение,
+# а LoRa rate-limit (6 msg/60s) даёт максимум 12 вызовов/мин — без debounce.
+_PENDING_EMOJI = "👀"   # бот увидел и взял в работу
+
+ERROR_EMOJI: dict[DeliveryStatus, str] = {
+    DeliveryStatus.FAILED: "😢",   # ошибка TX — важно показать
+    DeliveryStatus.UNKNOWN: "🤔",  # статус неизвестен после рестарта
 }
 REJECT_EMOJI: dict[RejectReason, str] = {
-    RejectReason.TOO_LONG: "🤨",        # сообщение не влезло
-    RejectReason.RATE_LIMIT: "🥱",      # эфир перегружен
-    RejectReason.TTL_EXPIRED: "😴",     # протухло в очереди
+    RejectReason.TOO_LONG: "🤨",   # сообщение не влезло
+    RejectReason.RATE_LIMIT: "🥱", # эфир перегружен
+    RejectReason.TTL_EXPIRED: "😴", # протухло в очереди
 }
 
 
@@ -135,13 +140,24 @@ class TelegramTransport(Transport):
         status: DeliveryStatus,
         reason: Optional[RejectReason] = None,
     ) -> None:
-        emoji = REJECT_EMOJI.get(reason) if reason else STATUS_EMOJI.get(status)
-        if emoji is None or self._bot is None:
-            return
+        if status == DeliveryStatus.TRANSMITTING:
+            return  # промежуточный — не трогаем реакцию, экономим API-вызов
+
+        if status == DeliveryStatus.PENDING:
+            reaction: list[ReactionTypeEmoji] = [ReactionTypeEmoji(emoji=_PENDING_EMOJI)]
+        elif status == DeliveryStatus.SENT:
+            reaction = []  # успех = убираем реакцию; тишина — лучший индикатор OK
+        elif reason is not None:
+            emoji = REJECT_EMOJI.get(reason)
+            reaction = [ReactionTypeEmoji(emoji=emoji)] if emoji else []
+        else:
+            emoji = ERROR_EMOJI.get(status)
+            reaction = [ReactionTypeEmoji(emoji=emoji)] if emoji else []
+
         chat_id, _ = split_channel(origin.channel)
         try:
-            await self._bot.set_message_reaction(  # verify; идемпотентно (§11.1)
-                chat_id, int(message_id), reaction=[ReactionTypeEmoji(emoji=emoji)]
+            await self._bot.set_message_reaction(  # идемпотентно (§11.1)
+                chat_id, int(message_id), reaction=reaction
             )
         except Exception:  # noqa: BLE001
             log.debug("set_message_reaction не удался для %s", message_id, exc_info=True)
