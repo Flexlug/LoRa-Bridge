@@ -109,6 +109,7 @@ class MeshCoreTransport(Transport):
     def __init__(self, node: MeshCoreNode) -> None:
         self.id = node.id
         self.connection = node.connection
+        self._log_raw_rx = node.log_raw_rx
         self._hub = Hub()
         self._mc = None  # объект meshcore.MeshCore
         self._endpoints: dict[str, EndpointState] = {
@@ -124,7 +125,14 @@ class MeshCoreTransport(Transport):
     async def start(self) -> None:
         # Event создаётся до connect(), чтобы DISCONNECTED не пропустить при немедленном обрыве
         self._disconnect_ev = anyio.Event()
-        self._mc = await self.connect()
+        try:
+            self._mc = await self.connect()
+        except RuntimeError as exc:
+            # Устройство не ответило на handshake — сигналим disconnect,
+            # чтобы run() подхватил и повторил попытку с backoff.
+            log.warning("нода '%s': %s — ожидаю reconnect", self.id, exc)
+            self._signal_disconnect()
+            return
         await self.set_time()  # R6
         for ep in self._endpoints.values():
             await self.resolve_endpoint(ep)  # R3
@@ -152,8 +160,6 @@ class MeshCoreTransport(Transport):
             await self._teardown()
             try:
                 await self.start()
-                delay = 1.0  # сброс backoff после успешного реконнекта
-                log.info("нода '%s': переподключена", self.id)
             except anyio.get_cancelled_exc_class():
                 raise
             except Exception as exc:
@@ -162,6 +168,14 @@ class MeshCoreTransport(Transport):
                 # start() уже выставил свежий _disconnect_ev — сбрасываем,
                 # чтобы следующая итерация не зависла на нём
                 self._disconnect_ev = None
+                continue
+            if self._mc is not None:
+                delay = 1.0  # сброс backoff после успешного реконнекта
+                log.info("нода '%s': переподключена", self.id)
+            else:
+                # start() поймал ошибку connect() — устройство не отвечает,
+                # применяем backoff чтобы не спамить каждую секунду
+                delay = min(delay * 2, 60.0)
 
     async def _teardown(self) -> None:
         """Сбросить текущее соединение и routing-таблицы перед реконнектом."""
@@ -236,26 +250,60 @@ class MeshCoreTransport(Transport):
             case _ as unreachable:
                 assert_never(unreachable)
 
+    def _channel_secret_bytes(self, ep: PublicEndpointState | PrivateEndpointState) -> bytes | None:
+        match ep:
+            case PublicEndpointState():
+                return None  # PSK = sha256(name)[:16] внутри meshcore
+            case PrivateEndpointState():
+                return bytes.fromhex(ep.secret)  # секрет — raw hex PSK из MeshCore-приложения
+            case _ as unreachable:
+                assert_never(unreachable)
+
+    def _expected_channel_hash(self, ep: PublicEndpointState | PrivateEndpointState) -> str:
+        secret = self._channel_secret_bytes(ep)
+        if secret is None:
+            secret = hashlib.sha256(ep.channel_name.encode()).digest()[:16]
+        return hashlib.sha256(secret).hexdigest()[:2]
+
     async def resolve_channel_index(self, ep: PublicEndpointState | PrivateEndpointState) -> int:
-        """Найти канал на устройстве по имени; если нет — создать в пустом слоте."""
+        """Найти канал на устройстве по имени.
+
+        Если найден, но PSK не совпадает с конфигом — перезаписывает слот.
+        Если не найден — создаёт в первом свободном слоте.
+        """
         device_info = await self._mc.commands.send_device_query()
         if device_info.is_error():
             raise RuntimeError(f"нода '{self.id}': не удалось получить device info")
         max_channels = device_info.payload.get("max_channels", 8)
 
+        expected_hash = self._expected_channel_hash(ep)
+
         found: list[str] = []
         first_empty: int | None = None
+        psk_mismatch_idx: int | None = None
         for idx in range(max_channels):
             ch = await self._mc.commands.get_channel(idx)
             if ch.is_error():
                 break
             name = ch.payload.get("channel_name", "")
+            ch_hash = ch.payload.get("channel_hash", "?")
             found.append(name)
+            if name:
+                log.debug("нода '%s': слот %d: '%s' chan_hash=%s", self.id, idx, name, ch_hash)
             if name == ep.channel_name:
-                log.debug("нода '%s': канал '%s' → слот %d", self.id, ep.channel_name, idx)
-                return idx
+                if ch_hash == expected_hash:
+                    log.debug("нода '%s': канал '%s' → слот %d (chan_hash=%s)", self.id, ep.channel_name, idx, ch_hash)
+                    return idx
+                log.warning(
+                    "нода '%s': канал '%s' в слоте %d имеет chan_hash=%s, ожидается %s — перезапишу",
+                    self.id, ep.channel_name, idx, ch_hash, expected_hash,
+                )
+                psk_mismatch_idx = idx
             if name == "" and first_empty is None:
                 first_empty = idx
+
+        if psk_mismatch_idx is not None:
+            return await self._create_channel(ep, psk_mismatch_idx)
 
         non_empty = [n for n in found if n]
         log.debug("нода '%s': каналы на устройстве: %s", self.id, non_empty)
@@ -278,14 +326,7 @@ class MeshCoreTransport(Transport):
         Это нормальное поведение: реконнект-цикл подхватит его автоматически,
         после чего канал будет найден и бот продолжит работу.
         """
-        match ep:
-            case PublicEndpointState():
-                secret_bytes: bytes | None = None  # PSK = sha256(name)[:16] внутри meshcore
-            case PrivateEndpointState():
-                # verify: проверить совпадает ли с деривацией MeshCore-приложения
-                secret_bytes = hashlib.sha256(ep.secret.encode()).digest()[:16]
-            case _ as unreachable:
-                assert_never(unreachable)
+        secret_bytes = self._channel_secret_bytes(ep)
 
         log.warning(
             "нода '%s': канал '%s' не найден — записываю в слот %d. "
@@ -330,10 +371,16 @@ class MeshCoreTransport(Transport):
                     assert_never(unreachable)
             result = self.classify(res)
             if not result.ok:
-                log.warning(
-                    "нода '%s': send в %s вернул ошибку: %s (payload=%s)",
-                    self.id, target.channel, result.detail, res.payload,
-                )
+                if result.busy:
+                    log.debug(
+                        "нода '%s': send в %s временная ошибка: %s — повтор",
+                        self.id, target.channel, result.detail,
+                    )
+                else:
+                    log.warning(
+                        "нода '%s': send в %s вернул ошибку: %s (payload=%s)",
+                        self.id, target.channel, result.detail, res.payload,
+                    )
             return result
         except Exception as exc:  # noqa: BLE001
             log.exception("MeshCore send в %s упал", target.channel)
@@ -345,7 +392,10 @@ class MeshCoreTransport(Transport):
             payload = res.payload if isinstance(res.payload, dict) else {}
             if payload.get("error_code") == 3:  # ERR_CODE_TABLE_FULL
                 return SendResult.overloaded()
-            detail = payload.get("code_string") or payload.get("reason") or str(res.payload)
+            reason = payload.get("reason", "")
+            if reason == "no_event_received":  # устройство занято флудом — повтор, не FAILED
+                return SendResult.overloaded(reason)
+            detail = payload.get("code_string") or reason or str(res.payload)
             return SendResult.failure(detail)
         return SendResult.success()
 
@@ -356,6 +406,11 @@ class MeshCoreTransport(Transport):
 
     async def on_event(self, event) -> None:
         """Нормализовать RX-событие meshcore_py в доменный Message и опубликовать."""
+        if event.type == McEventType.RX_LOG_DATA:
+            if self._log_raw_rx:
+                log.debug("нода '%s': событие %s payload=%s", self.id, event.type, event.payload)
+        else:
+            log.debug("нода '%s': событие %s payload=%s", self.id, event.type, event.payload)
         if event.type == EV_DISCONNECTED:
             self._signal_disconnect()
             return
@@ -366,8 +421,13 @@ class MeshCoreTransport(Transport):
     def normalize(self, event) -> Optional[Message]:
         payload = event.payload if isinstance(event.payload, dict) else {}
         if event.type == EV_CHANNEL_MSG:
-            endpoint = self._by_index.get(payload.get("channel_idx", -1))
+            idx = payload.get("channel_idx", -1)
+            endpoint = self._by_index.get(idx)
             if endpoint is None:
+                log.warning(
+                    "нода '%s': CHANNEL_MSG_RECV с channel_idx=%s не совпадает с known=%s — дроп",
+                    self.id, idx, list(self._by_index.keys()),
+                )
                 return None
             ts = payload.get("sender_timestamp", 0)
             text = payload.get("text", "")
