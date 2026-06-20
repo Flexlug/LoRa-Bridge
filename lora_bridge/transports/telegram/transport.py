@@ -72,6 +72,7 @@ class ReactionDebouncer:
         self._delay = delay
         self._tasks: dict[tuple[int, str], asyncio.Task[None]] = {}
         self._generation: dict[tuple[int, str], int] = {}
+        self._sent: set[tuple[int, str]] = set()  # ключи где реакция реально выставлена
 
     def schedule(
         self,
@@ -91,12 +92,21 @@ class ReactionDebouncer:
     async def clear_now(self, key: tuple[int, str], bot: Bot) -> None:
         """Немедленно убрать реакцию (SENT). Отменяет любой отложенный callback.
 
-        Инкрементирует generation чтобы callback, уже выполняющийся за await,
-        не смог выставить реакцию после того как мы её очистили.
+        API-вызов делается только если реакция была реально выставлена —
+        иначе Telegram вернёт REACTION_EMPTY.
         """
         if prev := self._tasks.pop(key, None):
             prev.cancel()
+            # Задача ещё спала — реакция не была выставлена, чистить нечего
+            self._generation[key] = self._generation.get(key, -1) + 1
+            return
+
         self._generation[key] = self._generation.get(key, -1) + 1
+
+        if key not in self._sent:
+            return  # реакция не выставлялась — REACTION_EMPTY если звонить
+
+        self._sent.discard(key)
         chat_id, message_id = key
         try:
             await bot.set_message_reaction(chat_id, int(message_id), reaction=[])
@@ -123,6 +133,7 @@ class ReactionDebouncer:
         chat_id, message_id = key
         try:
             await bot.set_message_reaction(chat_id, int(message_id), reaction=reaction)
+            self._sent.add(key)  # реакция выставлена — теперь clear_now знает что чистить
         except Exception:  # noqa: BLE001
             log.debug("set_message_reaction не удался для %s/%s", chat_id, message_id, exc_info=True)
 

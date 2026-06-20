@@ -230,8 +230,8 @@ async def test_debouncer_schedules_reaction_after_delay():
     assert calls[0][0].emoji == "👀"
 
 
-async def test_debouncer_sent_cancels_pending_and_clears():
-    """SENT отменяет отложенный callback и сразу очищает реакцию."""
+async def test_debouncer_sent_before_debounce_no_api_calls():
+    """SENT до истечения debounce: отменяет задачу БЕЗ API-вызова (реакция не была выставлена)."""
     from lora_bridge.transports.telegram.transport import ReactionDebouncer
     from aiogram.types import ReactionTypeEmoji
     from unittest.mock import AsyncMock
@@ -250,8 +250,31 @@ async def test_debouncer_sent_cancels_pending_and_clears():
     # Ждём дольше чем задержка — callback НЕ должен сработать
     await anyio.sleep(0.3)
 
-    assert len(calls) == 1
-    assert calls[0] == []  # только clear, никакого 👀
+    # Ноль вызовов: реакция не была выставлена → REACTION_EMPTY не возникает
+    assert calls == []
+
+
+async def test_debouncer_sent_after_debounce_clears():
+    """SENT после срабатывания debounce: реакция была выставлена → делаем clear."""
+    from lora_bridge.transports.telegram.transport import ReactionDebouncer
+    from aiogram.types import ReactionTypeEmoji
+    from unittest.mock import AsyncMock
+
+    calls: list = []
+    bot = AsyncMock()
+    bot.set_message_reaction = AsyncMock(side_effect=lambda *a, **kw: calls.append(kw.get("reaction", [])))
+
+    debouncer = ReactionDebouncer(delay=0.05)
+    debouncer.schedule((1, "99"), [ReactionTypeEmoji(emoji="👀")], bot)
+
+    # Ждём дольше debounce — 👀 выставится
+    await anyio.sleep(0.1)
+    assert len(calls) == 1 and calls[0][0].emoji == "👀"
+
+    # Теперь SENT — должен вызвать clear (reaction=[])
+    await debouncer.clear_now((1, "99"), bot)
+    assert len(calls) == 2
+    assert calls[1] == []
 
 
 async def test_debouncer_race_sent_during_apply():
