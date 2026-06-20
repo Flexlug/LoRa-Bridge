@@ -46,20 +46,16 @@ class EgressWorker:
         self._on_committed = on_committed
         self._on_reject = on_reject
 
-    @staticmethod
-    def make_key(item: QueueItem) -> str:
-        return f"{item.source.transport_id}:{item.source_msg_id}"
-
     async def run(self) -> None:
         async for item in self._queue:
             if self._queue.is_stale(item):  # протух по TTL до отправки (B1)
-                await self._journal.mark_terminal(self.make_key(item), DeliveryStatus.REJECTED)
+                await self._journal.mark_terminal(item.msg_key, DeliveryStatus.REJECTED)
                 await self._on_reject(item, RejectReason.TTL_EXPIRED)
                 continue
             await self.transmit(item)
 
     async def transmit(self, item: QueueItem) -> None:
-        msg_key = self.make_key(item)
+        msg_key = item.msg_key
         await self._journal.mark_transmitting(msg_key)  # persist ДО node.send() (§11.1)
         await self._status.set(item.source, item.source_msg_id, DeliveryStatus.TRANSMITTING)
 

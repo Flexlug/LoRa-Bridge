@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from typing import NamedTuple, assert_never
 
 from .config.schema import (
@@ -15,7 +16,6 @@ from .config.schema import (
     MessengerSubscriber,
     MeshCoreNode,
     MessengerConfig,
-    TelegramMessengerConfig,
 )
 from .core.bridge import NodeRuntime
 from .core.notifier import NotifySink
@@ -55,8 +55,6 @@ class Messengers(NamedTuple):
 
 def build_node(node: MeshCoreNode) -> LoraNodeEntry:
     log.debug("конструирую ноду %s (%s)", node.id, node.type)
-    if not isinstance(node, MeshCoreNode):
-        raise NotImplementedError(f"нода {node.id}: тип '{node.type}' пока не поддержан")
     transport = MeshCoreTransport(node)
     p = node.policies
     rate = RateSpec(p.egress_rate.msgs_per_window, p.egress_rate.window_seconds)
@@ -77,10 +75,8 @@ def build_node(node: MeshCoreNode) -> LoraNodeEntry:
 
 def build_messenger(cfg: MessengerConfig) -> MessengerEntry:
     log.debug("конструирую мессенджер %s (%s)", cfg.id, cfg.kind)
-    if not isinstance(cfg, TelegramMessengerConfig):
-        raise NotImplementedError(f"мессенджер {cfg.id}: kind '{cfg.kind}' пока не поддержан")
     tag = cfg.tag or cfg.kind.upper()[:2]
-    return MessengerEntry(TelegramTransport(cfg.id, tag, cfg), tag)
+    return MessengerEntry(TelegramTransport(cfg.id, cfg), tag)
 
 
 def build_rooms(config: AppConfig) -> RoomRegistry:
@@ -124,7 +120,7 @@ def build_notice_sink(messenger_transports: dict[str, Transport], sender: Identi
         await transport.send(
             ref,
             Message(
-                id=f"notice-{id(text)}",
+                id=f"notice-{uuid.uuid4()}",
                 source=ref,
                 sender=sender,
                 text=text,

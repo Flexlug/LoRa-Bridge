@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from ..domain.models import LabelFormat, Message, Room
+from ..domain.models import LabelFormat, Message
 
 
 def utf8_len(s: str) -> int:
@@ -27,14 +27,14 @@ def clip_utf8(s: str, max_bytes: int) -> str:
     return encoded[:max_bytes].decode("utf-8", errors="ignore")
 
 
-def build_lora_text(msg: Message, room: Room, tag: str, fmt: LabelFormat) -> str:
+def build_lora_text(msg: Message, writable_messenger_count: int, tag: str, fmt: LabelFormat) -> str:
     """Развернуть сообщение мессенджера в плоскую строку ``<префикс><текст>``.
 
     Тип опускается, если в комнату пишет ровно один мессенджер (AD-10).
     Текст пользователя НЕ трогаем (AD-11); проверку байтового бюджета делает вызывающий.
     """
     nick = clip_utf8(msg.sender.display_name, fmt.max_nick_bytes)  # ник усекаем — ок
-    if room.writable_messenger_count > 1 and fmt.include_type:
+    if writable_messenger_count > 1 and fmt.include_type:
         label = f"[{tag}:{nick}] "  # "[TG:Alex] "
     else:
         label = f"[{nick}] "  # "[Alex] "

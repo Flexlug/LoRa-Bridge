@@ -21,7 +21,7 @@ from .journal import JournalEntry, OutboundJournal
 from .loopguard import LoopGuard
 from .notifier import DropNotifier
 from .queue import CommitQueue, QueueItem
-from .routing import LoraMember, MessengerMember, RoomRegistry
+from .routing import LoraMember, MessengerMember, RoomRegistry, RoomRoute
 from .status import StatusDispatcher
 from .transform import build_lora_text, oversize_bytes
 from ..domain.models import (
@@ -30,7 +30,6 @@ from ..domain.models import (
     LabelFormat,
     Message,
     RejectReason,
-    Room,
 )
 from ..domain.ports import Transport
 
@@ -150,13 +149,12 @@ class Bridge:
     # --- egress (в LoRa) ------------------------------------------------------
 
     async def enqueue_to_lora(
-        self, src: Message, target: LoraMember, room, *, from_messenger: bool
+        self, src: Message, target: LoraMember, room: RoomRoute, *, from_messenger: bool
     ) -> None:
         node = self._nodes[target.node_id]
         if from_messenger:
             tag = self._tags.get(src.source.transport_id, "?")
-            droom = Room(target.endpoint, room.writable_messenger_count, target.node_id)
-            text = build_lora_text(src, droom, tag, node.label_fmt)
+            text = build_lora_text(src, room.writable_messenger_count, tag, node.label_fmt)
         else:
             text = src.text  # LoRa↔LoRa relay: форвардим как есть (§12.1)
 
@@ -187,7 +185,7 @@ class Bridge:
 
         await self._journal.record_pending(
             JournalEntry(
-                msg_key=f"{src.source.transport_id}:{src.id}",
+                msg_key=item.msg_key,
                 origin_transport=src.source.transport_id,
                 origin_chat=src.source.channel,
                 origin_msg_id=src.id,

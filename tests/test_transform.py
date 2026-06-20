@@ -6,7 +6,7 @@ from lora_bridge.core.transform import (
     oversize_bytes,
     utf8_len,
 )
-from lora_bridge.domain.models import ChannelRef, Identity, LabelFormat, Message, Room
+from lora_bridge.domain.models import ChannelRef, Identity, LabelFormat, Message
 
 
 def _msg(name: str, text: str) -> Message:
@@ -35,25 +35,22 @@ def test_clip_utf8_passthrough_when_fits():
 
 
 def test_prefix_includes_type_when_multiple_messengers():
-    room = Room(lora_endpoint="emergency", writable_messenger_count=2)
     fmt = LabelFormat(include_type=True, max_nick_bytes=24)
-    out = build_lora_text(_msg("Alex", "привет"), room, tag="TG", fmt=fmt)
+    out = build_lora_text(_msg("Alex", "привет"), writable_messenger_count=2, tag="TG", fmt=fmt)
     assert out == "[TG:Alex] привет"
 
 
 def test_prefix_omits_type_when_single_messenger():
-    room = Room(lora_endpoint="emergency", writable_messenger_count=1)
     fmt = LabelFormat(include_type=True, max_nick_bytes=24)
-    out = build_lora_text(_msg("Alex", "привет"), room, tag="TG", fmt=fmt)
+    out = build_lora_text(_msg("Alex", "привет"), writable_messenger_count=1, tag="TG", fmt=fmt)
     assert out == "[Alex] привет"
 
 
 def test_text_is_never_truncated():
     # длинный текст не трогаем — это забота admission (TOO_LONG), не transform (AD-11)
-    room = Room(lora_endpoint="emergency", writable_messenger_count=1)
     fmt = LabelFormat(max_nick_bytes=4)
     long_text = "x" * 500
-    out = build_lora_text(_msg("Alexander", long_text), room, tag="TG", fmt=fmt)
+    out = build_lora_text(_msg("Alexander", long_text), writable_messenger_count=1, tag="TG", fmt=fmt)
     assert long_text in out
 
 

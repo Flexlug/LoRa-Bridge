@@ -10,6 +10,7 @@ from .ids import EndpointName, NodeId
 from .messengers import MessengerConfig
 from .nodes import LoraNode
 from .rooms import LoraRef, LoraSubscriber, MessengerSubscriber, RoomConfig
+from ...domain.models import messenger_channel
 
 
 def validate_lora_ref(
@@ -27,7 +28,7 @@ def _msg_key(sub: MessengerSubscriber) -> tuple[str, str, str | None]:
 
 
 def _msg_label(sub: MessengerSubscriber) -> str:
-    return f"{sub.transport}:{sub.chat}" + (f"#{sub.topic}" if sub.topic else "")
+    return f"{sub.transport}:{messenger_channel(sub.chat, sub.topic)}"
 
 
 def _lora_label(ref: LoraRef) -> str:

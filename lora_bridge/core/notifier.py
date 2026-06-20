@@ -26,17 +26,12 @@ class WindowKey(NamedTuple):
 class DropKey(NamedTuple):
     """Ключ счётчика накопленных дропов: точный источник + причина."""
 
-    transport_id: str
-    channel: str
+    source: ChannelRef
     reason: RejectReason
 
     @property
     def window_key(self) -> WindowKey:
-        return WindowKey(self.transport_id, self.reason)
-
-    @property
-    def source(self) -> ChannelRef:
-        return ChannelRef(self.transport_id, self.channel)
+        return WindowKey(self.source.transport_id, self.reason)
 
 
 class DropNotifier:
@@ -64,7 +59,7 @@ class DropNotifier:
             await self._sink(source, self.format_notice(reason, 1, detail))
         else:
             # внутри окна — просто накапливаем (хвост уйдёт следующим flush)
-            self._counts[DropKey(source.transport_id, source.channel, reason)] += 1
+            self._counts[DropKey(source, reason)] += 1
 
     async def flush_due(self) -> None:
         """Слить накопленные хвосты по истёкшим окнам (зовётся периодически)."""
@@ -74,10 +69,9 @@ class DropNotifier:
             if (now - self._last_flush.get(wkey, 0)) >= self._window:
                 self._last_flush[wkey] = now
                 del self._counts[drop_key]
-                if count:
-                    await self._sink(
-                        drop_key.source, self.format_notice(drop_key.reason, count, "")
-                    )
+                await self._sink(
+                    drop_key.source, self.format_notice(drop_key.reason, count, "")
+                )
 
     @staticmethod
     def format_notice(reason: RejectReason, count: int, detail: str) -> str:

@@ -30,6 +30,10 @@ class QueueItem:
     from_messenger: bool  # источник — мессенджер (нужен статус/миррор)
     enqueued_at: float = field(default_factory=time.monotonic)
 
+    @property
+    def msg_key(self) -> str:
+        return f"{self.source.transport_id}:{self.source_msg_id}"
+
 
 class CommitQueue:
     def __init__(

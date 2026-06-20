@@ -39,7 +39,7 @@ class TtlWindow:
     def evict(self, now: float) -> None:
         deadline = now - self._ttl
         while self._store:
-            _, ts = next(iter(self._store.items()))
+            ts = next(iter(self._store.values()))
             if ts >= deadline:
                 break
             self._store.popitem(last=False)

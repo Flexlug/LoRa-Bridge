@@ -128,65 +128,35 @@ class MeshCoreTransport(Transport):
             await self._mc.disconnect()  # verify
             self._mc = None
 
+    async def _connect_mc(self, coro, label: str):
+        try:
+            mc = await coro
+        except Exception as exc:
+            raise RuntimeError(f"нода '{self.id}': не удалось подключиться {label}: {exc}") from exc
+        if mc is None:
+            raise RuntimeError(f"нода '{self.id}': {label} — нет ответа от устройства")
+        log.info("нода '%s' подключена: %s", self.id, label)
+        return mc
+
     async def connect(self):
         match self.connection:
             case TcpConnection(host=host, port=port):
-                try:
-                    mc = await MeshCore.create_tcp(host, port)  # verify
-                except Exception as exc:
-                    raise RuntimeError(
-                        f"нода '{self.id}': не удалось подключиться по TCP {host}:{port}: {exc}"
-                    ) from exc
-                if mc is None:
-                    raise RuntimeError(
-                        f"нода '{self.id}': TCP {host}:{port} — нет ответа от устройства"
-                    )
-                log.info("нода '%s' подключена: TCP %s:%d", self.id, host, port)
-                return mc
-
+                return await self._connect_mc(
+                    MeshCore.create_tcp(host, port), f"TCP {host}:{port}"  # verify
+                )
             case SerialConnection(port=port):
-                try:
-                    mc = await MeshCore.create_serial(port)  # verify
-                except Exception as exc:
-                    raise RuntimeError(
-                        f"нода '{self.id}': не удалось открыть serial {port}: {exc}"
-                    ) from exc
-                if mc is None:
-                    raise RuntimeError(
-                        f"нода '{self.id}': serial {port} — нет ответа от устройства"
-                    )
-                log.info("нода '%s' подключена: serial %s", self.id, port)
-                return mc
-
+                return await self._connect_mc(
+                    MeshCore.create_serial(port), f"serial {port}"  # verify
+                )
             case UsbConnection(device_id=device_id):
                 serial_port = self.port_by_vidpid(device_id)
-                try:
-                    mc = await MeshCore.create_serial(serial_port)
-                except Exception as exc:
-                    raise RuntimeError(
-                        f"нода '{self.id}': не удалось открыть USB {device_id} ({serial_port}): {exc}"
-                    ) from exc
-                if mc is None:
-                    raise RuntimeError(
-                        f"нода '{self.id}': USB {device_id} ({serial_port}) — нет ответа от устройства"
-                    )
-                log.info("нода '%s' подключена: USB %s (%s)", self.id, device_id, serial_port)
-                return mc
-
+                return await self._connect_mc(
+                    MeshCore.create_serial(serial_port), f"USB {device_id} ({serial_port})"
+                )
             case BleConnection(address=address):
-                try:
-                    mc = await MeshCore.create_ble(address)
-                except Exception as exc:
-                    raise RuntimeError(
-                        f"нода '{self.id}': не удалось подключиться по BLE к {address}: {exc}"
-                    ) from exc
-                if mc is None:
-                    raise RuntimeError(
-                        f"нода '{self.id}': BLE {address} — нет ответа от устройства"
-                    )
-                log.info("нода '%s' подключена: BLE %s", self.id, address)
-                return mc
-
+                return await self._connect_mc(
+                    MeshCore.create_ble(address), f"BLE {address}"
+                )
             case _ as unreachable:
                 assert_never(unreachable)
 

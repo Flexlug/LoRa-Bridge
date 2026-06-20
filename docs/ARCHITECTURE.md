@@ -923,11 +923,11 @@ flowchart LR
 ```
 lora_bridge/
 ├── domain/
-│   ├── models.py        # Message, ChannelRef, DeliveryStatus, Capabilities, Room …
+│   ├── models.py        # Message, ChannelRef, DeliveryStatus, Capabilities, LabelFormat …
 │   └── ports.py         # Protocol Transport (+ report_status)
 ├── core/
 │   ├── bridge.py        # ingress fan-in, маршрутизация LoRa/мессенджер; NodeRuntime (per-node)
-│   ├── routing.py       # RoomRegistry + LoraMember/MessengerMember (§12.1)
+│   ├── routing.py       # RoomRoute (комната = набор участников) + RoomRegistry + LoraMember/MessengerMember (§12.1)
 │   ├── queue.py         # bounded commit-очередь (QueueItem) + admission (rate-limit + TTL)
 │   ├── ratelimit.py     # token-bucket egress-лимитера ①
 │   ├── egress.py        # egress-воркер (один НА НОДУ), gated на commit

@@ -16,13 +16,13 @@ from .core.journal import SqliteJournal
 from .core.notifier import DropNotifier
 from .core.queue import QueueItem
 from .core.status import StatusDispatcher
-from .domain.models import ChannelRef, DeliveryStatus, Identity, Message
+from .domain.models import BRIDGE_TRANSPORT_UID, ChannelRef, DeliveryStatus, Identity, Message
 from .settings import Settings
 from .wiring import build_lora_nodes, build_messengers, build_notice_sink, build_rooms
 
 log = logging.getLogger(__name__)
 
-NOTICE_SENDER = Identity(display_name="bridge", transport_uid="__bridge__")
+NOTICE_SENDER = Identity(display_name="bridge", transport_uid=BRIDGE_TRANSPORT_UID)
 
 
 async def recover(

@@ -277,7 +277,7 @@ def wire_fakes(monkeypatch):
         lora_fakes[node.id] = t
         return t
 
-    def make_tg(transport_id, tag, cfg):
+    def make_tg(transport_id, cfg):
         t = FakeTransport(transport_id, MSG_CAPS)
         tg_fakes[transport_id] = t
         return t
@@ -567,7 +567,7 @@ async def test_commit_timeout_from_config(monkeypatch):
     slow_lora = FakeTransport("mc-1", LORA_CAPS, delay=10.0)
     tg = FakeTransport("tg", MSG_CAPS)
     monkeypatch.setattr(wiring_mod, "MeshCoreTransport", lambda node: slow_lora)
-    monkeypatch.setattr(wiring_mod, "TelegramTransport", lambda tid, tag, cfg: tg)
+    monkeypatch.setattr(wiring_mod, "TelegramTransport", lambda tid, cfg: tg)
 
     bridge, runtimes, journal = await assemble(_CFG_COMMIT_TIMEOUT)
 
@@ -594,7 +594,7 @@ async def test_lora_transport_failure_marks_failed(monkeypatch):
     failing_lora = FakeTransport("mc-1", LORA_CAPS, fail=True)
     tg = FakeTransport("tg", MSG_CAPS)
     monkeypatch.setattr(wiring_mod, "MeshCoreTransport", lambda node: failing_lora)
-    monkeypatch.setattr(wiring_mod, "TelegramTransport", lambda tid, tag, cfg: tg)
+    monkeypatch.setattr(wiring_mod, "TelegramTransport", lambda tid, cfg: tg)
 
     bridge, runtimes, journal = await assemble(_CFG_ONE_ROOM)
 

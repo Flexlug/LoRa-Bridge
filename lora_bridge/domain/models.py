@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
 
+BRIDGE_TRANSPORT_UID = "__bridge__"
+
 
 @dataclass(frozen=True)
 class ChannelRef:
@@ -108,10 +110,3 @@ class LabelFormat:
     max_nick_bytes: int = 24
 
 
-@dataclass
-class Room:
-    """Логическая комната: один LoRa-эндпоинт ↔ N подписчиков-мессенджеров (§12)."""
-
-    lora_endpoint: str  # ключ из node.endpoints → ChannelRef.channel
-    writable_messenger_count: int  # сколько мессенджеров ПИШУТ в комнату (для AD-10)
-    node_id: str = ""  # id LoRa-ноды (lora[].id)

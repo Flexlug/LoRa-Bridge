@@ -19,6 +19,7 @@ from aiogram.types import Message as TgMessage, ReactionTypeEmoji
 from ..hub import Hub
 from ...domain.ports import Transport
 from ...domain.models import (
+    BRIDGE_TRANSPORT_UID,
     Capabilities,
     ChannelRef,
     DeliveryStatus,
@@ -67,9 +68,8 @@ class TelegramTransport(Transport):
 
     _poll_task: asyncio.Task[None] | None = None
 
-    def __init__(self, transport_id: str, tag: str, config: TelegramMessengerConfig) -> None:
+    def __init__(self, transport_id: str, config: TelegramMessengerConfig) -> None:
         self.id = transport_id
-        self.tag = tag
         self._hub = Hub()
         self._bot = Bot(config.token)
         self._dp = Dispatcher()
@@ -109,7 +109,7 @@ class TelegramTransport(Transport):
         chat_id, thread_id = split_channel(target.channel)
         text = (
             msg.text
-            if msg.sender.transport_uid == "__bridge__"
+            if msg.sender.transport_uid == BRIDGE_TRANSPORT_UID
             else (f"<b>{msg.sender.display_name}</b>: {msg.text}")
         )
         try:
