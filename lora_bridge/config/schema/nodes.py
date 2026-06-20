@@ -44,6 +44,10 @@ class MeshCoreNode(BaseModel):
     policies: NodePolicies = Field(
         description="Радио-специфичные политики ноды (rate-limit, TTL, label)."
     )
+    log_raw_rx: bool = Field(
+        default=False,
+        description="Логировать RX_LOG_DATA (сырые пакеты эфира). По умолчанию выключено — слишком шумно.",
+    )
 
 
 LoraNode = MeshCoreNode  # TODO: Union[MeshCoreNode, MeshtasticNode] по `type`
