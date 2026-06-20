@@ -13,6 +13,7 @@ Commit зависит от типа эндпоинта:
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import time
 from dataclasses import dataclass
@@ -236,13 +237,14 @@ class MeshCoreTransport(Transport):
                 assert_never(unreachable)
 
     async def resolve_channel_index(self, ep: PublicEndpointState | PrivateEndpointState) -> int:
-        """Найти индекс канала по имени, перебирая слоты устройства."""
+        """Найти или создать канал на устройстве, вернуть его слот-индекс."""
         device_info = await self._mc.commands.send_device_query()
         if device_info.is_error():
             raise RuntimeError(f"нода '{self.id}': не удалось получить device info")
         max_channels = device_info.payload.get("max_channels", 8)
 
         found: list[str] = []
+        first_empty: int | None = None
         for idx in range(max_channels):
             ch = await self._mc.commands.get_channel(idx)
             if ch.is_error():
@@ -252,12 +254,45 @@ class MeshCoreTransport(Transport):
             if name == ep.channel_name:
                 log.debug("нода '%s': канал '%s' → слот %d", self.id, ep.channel_name, idx)
                 return idx
+            if name == "" and first_empty is None:
+                first_empty = idx
 
         log.debug("нода '%s': каналы на устройстве: %s", self.id, found)
-        raise RuntimeError(
-            f"нода '{self.id}': канал '{ep.channel_name}' не найден "
-            f"среди {max_channels} слотов устройства"
+
+        if first_empty is None:
+            raise RuntimeError(
+                f"нода '{self.id}': канал '{ep.channel_name}' не найден "
+                f"и нет свободных слотов (занято {len(found)}/{max_channels})"
+            )
+
+        return await self._create_channel(ep, first_empty)
+
+    async def _create_channel(
+        self, ep: PublicEndpointState | PrivateEndpointState, slot: int
+    ) -> int:
+        """Записать канал в пустой слот устройства."""
+        match ep:
+            case PublicEndpointState():
+                # PSK автоматически выводится из имени (sha256(name)[:16]) внутри set_channel
+                secret_bytes: bytes | None = None
+            case PrivateEndpointState():
+                # verify: MeshCore app может использовать другое преобразование secret→PSK
+                secret_bytes = hashlib.sha256(ep.secret.encode()).digest()[:16]
+            case _ as unreachable:
+                assert_never(unreachable)
+
+        log.info(
+            "нода '%s': канал '%s' не найден — записываю в слот %d",
+            self.id, ep.channel_name, slot,
         )
+        res = await self._mc.commands.set_channel(slot, ep.channel_name, secret_bytes)  # verify
+        if res.is_error():
+            raise RuntimeError(
+                f"нода '{self.id}': не удалось создать канал '{ep.channel_name}' в слоте {slot}: "
+                f"{res.payload}"
+            )
+        log.info("нода '%s': канал '%s' создан в слоте %d", self.id, ep.channel_name, slot)
+        return slot
 
     # --- отправка -------------------------------------------------------------
 
