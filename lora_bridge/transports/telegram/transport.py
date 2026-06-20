@@ -53,7 +53,9 @@ REJECT_EMOJI: dict[RejectReason, str] = {
 
 # Задержка перед простановкой реакции (секунды).
 # Если сообщение отправилось быстрее этого порога — 👀 вообще не появится.
-REACTION_DEBOUNCE_S = 0.5
+# MeshCore MSG_OK для public/private каналов приходит за 0.5–1.5с;
+# 2.0с даёт запас чтобы 👀 не мелькал при нормальной работе.
+REACTION_DEBOUNCE_S = 2.0
 
 
 class ReactionDebouncer:
