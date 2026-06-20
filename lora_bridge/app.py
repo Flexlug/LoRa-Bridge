@@ -79,6 +79,7 @@ async def run(config: AppConfig, settings: Settings) -> None:
 def main() -> None:
     settings = Settings.from_env()
     logging.basicConfig(level=settings.log_level)
+    logging.getLogger().setLevel(settings.log_level)  # override если basicConfig не сработал
     try:
         config = AppConfig.model_validate(dict(EnvYAML(settings.config_path)))
     except ValidationError as exc:
