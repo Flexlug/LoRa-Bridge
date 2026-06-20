@@ -13,6 +13,7 @@ from enum import Enum
 from typing import Optional
 
 BRIDGE_TRANSPORT_UID = "__bridge__"
+LORA_SENDER_UID = "__lora__"  # transport_uid для сообщений из эфира (нет отправителя на уровне протокола)
 
 
 @dataclass(frozen=True)

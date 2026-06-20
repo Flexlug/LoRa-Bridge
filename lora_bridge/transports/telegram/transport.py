@@ -20,6 +20,7 @@ from ..hub import Hub
 from ...domain.ports import Transport
 from ...domain.models import (
     BRIDGE_TRANSPORT_UID,
+    LORA_SENDER_UID,
     Capabilities,
     ChannelRef,
     DeliveryStatus,
@@ -107,11 +108,12 @@ class TelegramTransport(Transport):
 
     async def send(self, target: ChannelRef, msg: Message) -> SendResult:
         chat_id, thread_id = split_channel(target.channel)
-        text = (
-            msg.text
-            if msg.sender.transport_uid == BRIDGE_TRANSPORT_UID
-            else (f"<b>{msg.sender.display_name}</b>: {msg.text}")
-        )
+        if msg.sender.transport_uid in (BRIDGE_TRANSPORT_UID, LORA_SENDER_UID):
+            # уведомления моста и сообщения из эфира — текст как есть
+            text = msg.text
+        else:
+            # сообщение от пользователя мессенджера — добавляем имя
+            text = f"<b>{msg.sender.display_name}</b>: {msg.text}"
         try:
             await self._bot.send_message(  # verify
                 chat_id, text, message_thread_id=thread_id, parse_mode="HTML"

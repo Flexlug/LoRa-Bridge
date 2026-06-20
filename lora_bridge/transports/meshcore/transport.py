@@ -39,6 +39,7 @@ from ...domain.models import (
     ChannelRef,
     DeliveryStatus,
     Identity,
+    LORA_SENDER_UID,
     Message,
     RateSpec,
     RejectReason,
@@ -308,10 +309,11 @@ class MeshCoreTransport(Transport):
                 return None
             ts = payload.get("sender_timestamp", 0)
             text = payload.get("text", "")
+            # CHANNEL_MSG_RECV не несёт имени отправителя — callsign уже в тексте
             return Message(
                 id=f"{endpoint}:{ts}:{hash(text)}",
                 source=ChannelRef(self.id, endpoint),
-                sender=Identity(display_name="unknown", transport_uid="unknown"),
+                sender=Identity(display_name="", transport_uid=LORA_SENDER_UID),
                 text=text,
             )
         if event.type == EV_CONTACT_MSG:
@@ -323,7 +325,7 @@ class MeshCoreTransport(Transport):
             return Message(
                 id=f"{endpoint}:{payload.get('sender_timestamp', 0)}",
                 source=ChannelRef(self.id, endpoint),
-                sender=Identity(display_name=pubkey, transport_uid=pubkey),
+                sender=Identity(display_name=pubkey, transport_uid=LORA_SENDER_UID),
                 text=text,
             )
         return None  # ADVERTISEMENT/ACK/чужое — фильтр
