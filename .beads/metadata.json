@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "LoRa_Bridge",
+  "project_id": "f246a149-0ea1-4f9f-8f19-d7ba03d8ad03"
+}
