@@ -112,7 +112,7 @@ def build_lora_nodes(config: AppConfig, notice_sink: NotifySink) -> LoraNodes:
         entry = build_node(node_cfg, notice_sink)
         transports[node_cfg.id] = entry.transport
         runtimes[node_cfg.id] = entry.runtime
-        log.info("транспорт ноды '%s' создан (%d эндпоинтов)", node_cfg.id, len(node_cfg.endpoints))
+        log.debug("нода '%s': объект сконфигурирован (%d эндпоинтов), подключение при старте", node_cfg.id, len(node_cfg.endpoints))
     return LoraNodes(transports, runtimes)
 
 
@@ -139,5 +139,5 @@ def build_messengers(config: AppConfig) -> Messengers:
     for m_cfg in config.messengers:
         binding = build_messenger(m_cfg)
         bindings[m_cfg.id] = binding
-        log.info("транспорт мессенджера '%s' создан (тег: %s)", m_cfg.id, binding.tag)
+        log.debug("мессенджер '%s': объект сконфигурирован (тег: %s), подключение при старте", m_cfg.id, binding.tag)
     return Messengers(bindings=bindings)
