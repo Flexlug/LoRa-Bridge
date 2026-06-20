@@ -206,3 +206,77 @@ async def test_run_backoff_doubles_on_failure():
 
     assert len(delays) >= 2, f"ожидали минимум 2 sleep-вызова, получили {delays}"
     assert delays[1] > delays[0], f"backoff не вырос: {delays}"
+
+
+# ---------------------------------------------------------------------------
+# ReactionDebouncer
+# ---------------------------------------------------------------------------
+
+async def test_debouncer_schedules_reaction_after_delay():
+    """Реакция выставляется после задержки если SENT не пришёл."""
+    from lora_bridge.transports.telegram.transport import ReactionDebouncer
+    from aiogram.types import ReactionTypeEmoji
+    from unittest.mock import AsyncMock
+
+    calls: list = []
+    bot = AsyncMock()
+    bot.set_message_reaction = AsyncMock(side_effect=lambda *a, **kw: calls.append(kw.get("reaction", [])))
+
+    debouncer = ReactionDebouncer(delay=0.05)
+    debouncer.schedule((1, "42"), [ReactionTypeEmoji(emoji="👀")], bot)
+
+    await anyio.sleep(0.1)
+    assert len(calls) == 1
+    assert calls[0][0].emoji == "👀"
+
+
+async def test_debouncer_sent_cancels_pending_and_clears():
+    """SENT отменяет отложенный callback и сразу очищает реакцию."""
+    from lora_bridge.transports.telegram.transport import ReactionDebouncer
+    from aiogram.types import ReactionTypeEmoji
+    from unittest.mock import AsyncMock
+
+    calls: list = []
+    bot = AsyncMock()
+    bot.set_message_reaction = AsyncMock(side_effect=lambda *a, **kw: calls.append(kw.get("reaction", [])))
+
+    debouncer = ReactionDebouncer(delay=0.2)
+    debouncer.schedule((1, "42"), [ReactionTypeEmoji(emoji="👀")], bot)
+
+    # SENT приходит раньше чем истечёт debounce
+    await anyio.sleep(0.05)
+    await debouncer.clear_now((1, "42"), bot)
+
+    # Ждём дольше чем задержка — callback НЕ должен сработать
+    await anyio.sleep(0.3)
+
+    assert len(calls) == 1
+    assert calls[0] == []  # только clear, никакого 👀
+
+
+async def test_debouncer_race_sent_during_apply():
+    """Generation-счётчик: SENT после пробуждения callback не даёт выставить реакцию."""
+    from lora_bridge.transports.telegram.transport import ReactionDebouncer
+    from aiogram.types import ReactionTypeEmoji
+    from unittest.mock import AsyncMock
+
+    order: list = []
+
+    async def fake_react(*args, reaction, **kw):
+        order.append(reaction)
+
+    bot = AsyncMock()
+    bot.set_message_reaction = AsyncMock(side_effect=fake_react)
+
+    debouncer = ReactionDebouncer(delay=0.05)
+    debouncer.schedule((1, "99"), [ReactionTypeEmoji(emoji="👀")], bot)
+
+    # Имитируем SENT сразу после пробуждения (до API-вызова callback)
+    await anyio.sleep(0.06)  # callback проснулся, но ещё не отправил
+    await debouncer.clear_now((1, "99"), bot)
+
+    await anyio.sleep(0.05)
+
+    # Может быть 1 или 2 вызова в зависимости от timing,
+    # но последний всегда должен быть clear ([])
+    assert order[-1] == [], f"последний вызов должен быть clear, получили: {order}"

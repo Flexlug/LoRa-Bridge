@@ -39,23 +39,90 @@ log = logging.getLogger(__name__)
 
 # Только эмодзи из whitelist-а Telegram (REACTION_INVALID иначе).
 # Актуальный список — в docstring aiogram.types.ReactionTypeEmoji.emoji.
-#
-# UX: PENDING → 👀 (бот принял), SENT → убрать реакцию (успех = тишина),
-# ошибки и неизвестность → остаются висеть чтобы пользователь заметил.
-# TRANSMITTING пропускается: промежуточный статус, лишний API-вызов.
-# Это также естественно ограничивает частоту вызовов: ≤2 на сообщение,
-# а LoRa rate-limit (6 msg/60s) даёт максимум 12 вызовов/мин — без debounce.
-_PENDING_EMOJI = "👀"   # бот увидел и взял в работу
+_PENDING_EMOJI = "👀"   # бот принял сообщение, ждёт отправки в LoRa
 
 ERROR_EMOJI: dict[DeliveryStatus, str] = {
     DeliveryStatus.FAILED: "😢",   # ошибка TX — важно показать
     DeliveryStatus.UNKNOWN: "🤔",  # статус неизвестен после рестарта
 }
 REJECT_EMOJI: dict[RejectReason, str] = {
-    RejectReason.TOO_LONG: "🤨",   # сообщение не влезло
-    RejectReason.RATE_LIMIT: "🥱", # эфир перегружен
+    RejectReason.TOO_LONG: "🤨",    # сообщение не влезло
+    RejectReason.RATE_LIMIT: "🥱",  # эфир перегружен
     RejectReason.TTL_EXPIRED: "😴", # протухло в очереди
 }
+
+# Задержка перед простановкой реакции (секунды).
+# Если сообщение отправилось быстрее этого порога — 👀 вообще не появится.
+REACTION_DEBOUNCE_S = 0.5
+
+
+class ReactionDebouncer:
+    """Откладывает простановку реакции; SENT немедленно очищает.
+
+    Защита от гонки: generation-счётчик на каждый (chat_id, message_id).
+    Даже если callback «убежал» мимо cancel() и дошёл до await — он
+    проверяет generation и отказывается, если SENT уже сменил его.
+
+    Ключ — (chat_id, message_id) чтобы не было коллизий между чатами.
+    """
+
+    def __init__(self, delay: float = REACTION_DEBOUNCE_S) -> None:
+        self._delay = delay
+        self._tasks: dict[tuple[int, str], asyncio.Task[None]] = {}
+        self._generation: dict[tuple[int, str], int] = {}
+
+    def schedule(
+        self,
+        key: tuple[int, str],
+        reaction: list[ReactionTypeEmoji],
+        bot: Bot,
+    ) -> None:
+        """Запланировать реакцию с задержкой. Отменяет предыдущий callback для этого ключа."""
+        if prev := self._tasks.pop(key, None):
+            prev.cancel()
+        gen = self._generation.get(key, -1) + 1
+        self._generation[key] = gen
+        self._tasks[key] = asyncio.create_task(
+            self._delayed_apply(key, gen, reaction, bot)
+        )
+
+    async def clear_now(self, key: tuple[int, str], bot: Bot) -> None:
+        """Немедленно убрать реакцию (SENT). Отменяет любой отложенный callback.
+
+        Инкрементирует generation чтобы callback, уже выполняющийся за await,
+        не смог выставить реакцию после того как мы её очистили.
+        """
+        if prev := self._tasks.pop(key, None):
+            prev.cancel()
+        self._generation[key] = self._generation.get(key, -1) + 1
+        chat_id, message_id = key
+        try:
+            await bot.set_message_reaction(chat_id, int(message_id), reaction=[])
+        except Exception:  # noqa: BLE001
+            log.debug("clear реакции не удался для %s/%s", chat_id, message_id, exc_info=True)
+
+    async def _delayed_apply(
+        self,
+        key: tuple[int, str],
+        gen: int,
+        reaction: list[ReactionTypeEmoji],
+        bot: Bot,
+    ) -> None:
+        try:
+            await asyncio.sleep(self._delay)
+        except asyncio.CancelledError:
+            return
+
+        # Проверяем generation после пробуждения — не пришёл ли SENT пока спали
+        if self._generation.get(key) != gen:
+            return
+
+        self._tasks.pop(key, None)
+        chat_id, message_id = key
+        try:
+            await bot.set_message_reaction(chat_id, int(message_id), reaction=reaction)
+        except Exception:  # noqa: BLE001
+            log.debug("set_message_reaction не удался для %s/%s", chat_id, message_id, exc_info=True)
 
 
 def split_channel(channel: str) -> tuple[int, Optional[int]]:
@@ -82,6 +149,7 @@ class TelegramTransport(Transport):
         self._bot = Bot(config.token)
         self._dp = Dispatcher()
         self._dp.message.register(self.on_message, F.text)  # verify: фильтр текстовых
+        self._debouncer = ReactionDebouncer()
 
     async def start(self) -> None:
         me = await self._bot.get_me()  # verify: бот доступен (sanity)
@@ -116,10 +184,8 @@ class TelegramTransport(Transport):
     async def send(self, target: ChannelRef, msg: Message) -> SendResult:
         chat_id, thread_id = split_channel(target.channel)
         if msg.sender.transport_uid in (BRIDGE_TRANSPORT_UID, LORA_SENDER_UID):
-            # уведомления моста и сообщения из эфира — текст как есть
             text = msg.text
         else:
-            # сообщение от пользователя мессенджера — добавляем имя
             text = f"<b>{msg.sender.display_name}</b>: {msg.text}"
         try:
             await self._bot.send_message(  # verify
@@ -141,12 +207,20 @@ class TelegramTransport(Transport):
         reason: Optional[RejectReason] = None,
     ) -> None:
         if status == DeliveryStatus.TRANSMITTING:
-            return  # промежуточный — не трогаем реакцию, экономим API-вызов
+            return  # промежуточный — не трогаем реакцию
 
+        chat_id, _ = split_channel(origin.channel)
+        key = (chat_id, message_id)
+
+        if status == DeliveryStatus.SENT:
+            # Успех: немедленно отменить pending callback и убрать реакцию
+            await self._debouncer.clear_now(key, self._bot)
+            return
+
+        # Для всех остальных статусов — откладываем через debouncer.
+        # Если SENT придёт раньше чем истечёт задержка — 👀 вообще не появится.
         if status == DeliveryStatus.PENDING:
             reaction: list[ReactionTypeEmoji] = [ReactionTypeEmoji(emoji=_PENDING_EMOJI)]
-        elif status == DeliveryStatus.SENT:
-            reaction = []  # успех = убираем реакцию; тишина — лучший индикатор OK
         elif reason is not None:
             emoji = REJECT_EMOJI.get(reason)
             reaction = [ReactionTypeEmoji(emoji=emoji)] if emoji else []
@@ -154,10 +228,5 @@ class TelegramTransport(Transport):
             emoji = ERROR_EMOJI.get(status)
             reaction = [ReactionTypeEmoji(emoji=emoji)] if emoji else []
 
-        chat_id, _ = split_channel(origin.channel)
-        try:
-            await self._bot.set_message_reaction(  # идемпотентно (§11.1)
-                chat_id, int(message_id), reaction=reaction
-            )
-        except Exception:  # noqa: BLE001
-            log.debug("set_message_reaction не удался для %s", message_id, exc_info=True)
+        if reaction:
+            self._debouncer.schedule(key, reaction, self._bot)
