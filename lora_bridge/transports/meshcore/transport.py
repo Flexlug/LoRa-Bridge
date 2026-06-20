@@ -292,7 +292,13 @@ class MeshCoreTransport(Transport):
             "Устройство может перезапуститься, бот переподключится автоматически.",
             self.id, ep.channel_name, slot,
         )
+        log.debug(
+            "нода '%s': вызов set_channel(slot=%d, name=%r, secret=%s)",
+            self.id, slot, ep.channel_name,
+            "auto" if secret_bytes is None else secret_bytes.hex(),
+        )
         res = await self._mc.commands.set_channel(slot, ep.channel_name, secret_bytes)  # verify
+        log.debug("нода '%s': ответ set_channel: type=%s payload=%s", self.id, res.type, res.payload)
         if res.is_error():
             raise RuntimeError(
                 f"нода '{self.id}': не удалось записать канал '{ep.channel_name}': {res.payload}"

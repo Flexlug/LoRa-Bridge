@@ -78,7 +78,11 @@ async def run(config: AppConfig, settings: Settings) -> None:
 
 def main() -> None:
     settings = Settings.from_env()
-    logging.basicConfig(level=settings.log_level)
+    logging.basicConfig(
+        level=settings.log_level,
+        format="%(asctime)s %(levelname)s:%(name)s:%(message)s",
+        datefmt="%H:%M:%S",
+    )
     logging.getLogger().setLevel(settings.log_level)  # override если basicConfig не сработал
     try:
         config = AppConfig.model_validate(dict(EnvYAML(settings.config_path)))
