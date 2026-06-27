@@ -1,9 +1,9 @@
-"""Характеризационные тесты кодирования Telegram-канала (channels.py).
+"""Характеризационные тесты декодирования Telegram-канала (``split_channel``).
 
-Закрепляют поведение ``split_channel``, вынесенного из transport.py при
-разбиении монолита, и — главное — round-trip-инвариант с доменным
-``messenger_channel``: обе функции обязаны кодировать (chat, topic) согласованно,
-иначе RX-сообщение не сматчится с комнатой (см. messenger_channel docstring).
+Закрепляют поведение ``split_channel`` и — главное — round-trip-инвариант с
+доменным ``messenger_channel``: энкодер и декодер обязаны кодировать (chat, topic)
+согласованно, иначе RX-сообщение не сматчится с комнатой (см. messenger_channel
+docstring). Декодер — приватный хелпер транспорта, живёт в transport.py.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 
 from lora_bridge.domain.models import messenger_channel
-from lora_bridge.transports.telegram.channels import split_channel
+from lora_bridge.transports.telegram.transport import split_channel
 
 
 def test_split_channel_chat_only() -> None:

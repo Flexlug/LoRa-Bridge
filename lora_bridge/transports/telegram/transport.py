@@ -16,7 +16,6 @@ from typing import AsyncIterator, Optional, TYPE_CHECKING
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.types import Message as TgMessage
 
-from .channels import split_channel
 from .commands import build_command_router
 from .reactions import ReactionFeedback
 from ..hub import Hub
@@ -39,6 +38,19 @@ if TYPE_CHECKING:
     from ...config.schema import TelegramMessengerConfig
 
 log = logging.getLogger(__name__)
+
+
+def split_channel(channel: str) -> tuple[int, Optional[int]]:
+    """``"chat"`` / ``"chat#topic"`` → ``(chat_id, thread_id|None)``. Инверсия ``messenger_channel``.
+
+    Декод нужен только на send-стороне адаптера (chat_id/thread_id для ``bot.send_message``),
+    поэтому живёт здесь, а не в (generic) домене рядом с ``messenger_channel``. Round-trip
+    с энкодером закреплён guard-тестом ``tests/test_telegram_channels.py``.
+    """
+    if "#" in channel:
+        chat, topic = channel.split("#", 1)
+        return int(chat), int(topic)
+    return int(channel), None
 
 
 class TelegramTransport(Transport):
