@@ -43,7 +43,7 @@ lora:
       ops:
         type: private
         channel_name: "Ops"
-        secret: "my-psk"
+        secret: "00112233445566778899aabbccddeeff"
       srv:
         type: room_server
         pubkey: "aabbccddeeff"
@@ -72,7 +72,7 @@ def test_full_config_parses():
     assert node.id == "mc-1"
     assert node.endpoints["general"].channel_name == "General"
     assert node.endpoints["ops"].channel_name == "Ops"
-    assert node.endpoints["ops"].secret == "my-psk"
+    assert node.endpoints["ops"].secret == "00112233445566778899aabbccddeeff"
     assert node.endpoints["srv"].pubkey == "aabbccddeeff"
     assert node.endpoints["srv"].password == "hunter2"
     assert cfg.messengers[0].token == "123:ABC"

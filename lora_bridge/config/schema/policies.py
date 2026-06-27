@@ -96,3 +96,17 @@ class NodePolicies(BaseModel):
         default_factory=LabelPolicy,
         description="Поведение префикса при выгрузке сообщений в LoRa.",
     )
+    override_oldest_contact_on_full: bool = Field(
+        default=False,
+        description=(
+            "Если таблица контактов переполнена при добавлении эндпоинта, "
+            "удалить самый старый контакт (по last_advert) и повторить."
+        ),
+    )
+    override_oldest_channel_on_full: bool = Field(
+        default=False,
+        description=(
+            "Если все слоты каналов заняты при добавлении эндпоинта, "
+            "перезаписать первый слот, не принадлежащий ни одному из настроенных каналов."
+        ),
+    )

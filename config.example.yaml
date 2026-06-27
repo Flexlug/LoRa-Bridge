@@ -24,6 +24,8 @@ lora:                                # МАССИВ физических LoRa-н
         pubkey: "a1b2c3d4…"
         password: ${MC_OPS_PW}                       # guest-пароль (пусто → read-only)
     policies:                        # политики САМОЙ ноды (радио-специфичны)
+      override_oldest_contact_on_full: true
+      override_oldest_channel_on_full: true
       egress_rate:                                   # под duty cycle
         msgs_per_window: 6
         window_seconds: 60

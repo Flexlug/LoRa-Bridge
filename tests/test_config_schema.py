@@ -4,10 +4,16 @@
 на уровне отдельных моделей — без сборки полного AppConfig.
 """
 
+from typing import get_args
+
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
 from lora_bridge.config.schema import (
+    Connection,
+    ConnectionBase,
+    Endpoint,
+    EndpointBase,
     MessengerConfig,
     MeshCoreNode,
     TelegramMessengerConfig,
@@ -15,6 +21,7 @@ from lora_bridge.config.schema import (
 
 _POLICIES = {"egress_rate": {"msgs_per_window": 6, "window_seconds": 60}}
 _TCP = {"type": "tcp", "host": "h", "port": 1}
+_PSK = "00112233445566778899aabbccddeeff"  # валидный PSK: 32 hex-символа = 16 байт
 
 
 def _node(connection, endpoints=None):
@@ -43,6 +50,30 @@ def _node(connection, endpoints=None):
 )
 def test_all_connection_types_valid(conn):
     MeshCoreNode.model_validate(_node(conn))
+
+
+def _assert_union_matches_subclasses(union, base):
+    """Сверяет ветки дискриминированного union со списком наследников базы.
+
+    Стережёт сценарий «добавил новый класс, но забыл дописать в union» —
+    тогда падает здесь с понятным сообщением, а не тихо игнорируется при
+    валидации конфига. ``union`` имеет вид ``Annotated[Union[...], Field(...)]``,
+    поэтому ветки достаём двойным ``get_args``.
+    """
+    declared = set(get_args(get_args(union)[0]))
+    subclasses = set(base.__subclasses__())
+    assert declared == subclasses, (
+        f"рассинхрон union и наследников {base.__name__}: "
+        f"в union нет {subclasses - declared}, лишние в union {declared - subclasses}"
+    )
+
+
+def test_connection_union_is_exhaustive():
+    _assert_union_matches_subclasses(Connection, ConnectionBase)
+
+
+def test_endpoint_union_is_exhaustive():
+    _assert_union_matches_subclasses(Endpoint, EndpointBase)
 
 
 # ---------------------------------------------------------------------------
@@ -74,7 +105,7 @@ def test_tcp_missing_port_rejected():
     "ep",
     [
         {"type": "public", "channel_name": "General"},
-        {"type": "private", "channel_name": "Ops", "secret": "my-psk"},
+        {"type": "private", "channel_name": "Ops", "secret": _PSK},
         {"type": "room_server", "pubkey": "abcdef123"},
         {"type": "room_server", "pubkey": "abcdef123", "password": "pw"},
     ],
@@ -111,6 +142,42 @@ def test_private_endpoint_missing_secret_rejected():
 def test_room_server_endpoint_missing_pubkey_rejected():
     with pytest.raises(ValidationError):
         MeshCoreNode.model_validate(_node(_TCP, {"ch": {"type": "room_server"}}))
+
+
+# ---------------------------------------------------------------------------
+# Endpoint — нормализация и валидаторы (LoRa-Bridge-305 / 3o9)
+# ---------------------------------------------------------------------------
+
+
+def test_room_server_pubkey_lowercased():
+    # Либа отдаёт pubkey_prefix в нижнем регистре, сравнение регистрозависимое:
+    # заглавный pubkey из конфига должен нормализоваться, иначе тихий дроп RX.
+    node = MeshCoreNode.model_validate(
+        _node(_TCP, {"ch": {"type": "room_server", "pubkey": "ABCDEF123456"}})
+    )
+    assert node.endpoints["ch"].pubkey == "abcdef123456"
+
+
+def test_private_endpoint_valid_secret_accepted():
+    node = MeshCoreNode.model_validate(
+        _node(_TCP, {"ch": {"type": "private", "channel_name": "Ops", "secret": _PSK}})
+    )
+    assert node.endpoints["ch"].secret == _PSK
+
+
+@pytest.mark.parametrize(
+    "secret",
+    [
+        "00112233445566778899aabbccddee",    # 30 символов — короткий
+        "00112233445566778899aabbccddeeff00",  # 34 символа — длинный
+        "00112233445566778899aabbccddeezz",  # 32 символа, но не hex
+    ],
+)
+def test_private_endpoint_invalid_secret_rejected(secret):
+    with pytest.raises(ValidationError):
+        MeshCoreNode.model_validate(
+            _node(_TCP, {"ch": {"type": "private", "channel_name": "Ops", "secret": secret}})
+        )
 
 
 # ---------------------------------------------------------------------------

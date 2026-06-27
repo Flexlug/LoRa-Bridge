@@ -23,7 +23,7 @@ def _make_node(node_id: str = "test") -> MagicMock:
     ep.channel_name = "General"
     node = MagicMock()
     node.id = node_id
-    node.endpoints = {}  # без эндпоинтов — упрощает resolve_endpoint
+    node.endpoints = {}  # без эндпоинтов — упрощает резолв при старте
     node.connection = MagicMock()
     return node
 

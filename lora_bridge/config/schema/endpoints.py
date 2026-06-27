@@ -9,10 +9,19 @@ from __future__ import annotations
 
 from typing import Annotated, Literal, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
-class PublicEndpoint(BaseModel):
+class EndpointBase(BaseModel):
+    """Маркерный базовый класс для всех типов эндпоинтов.
+
+    Существует ради инверсии зависимости: конкретный класс наследуется отсюда,
+    а guard-тест сверяет список наследников с union ``Endpoint`` и падает,
+    если новый тип забыли дописать в union (см. ``tests/test_config_schema.py``).
+    """
+
+
+class PublicEndpoint(EndpointBase):
     """Публичный канал MeshCore (общий PSK, flood без ACK).
 
     Подходит для общего чата. Доставка не гарантируется.
@@ -24,7 +33,7 @@ class PublicEndpoint(BaseModel):
     )
 
 
-class PrivateEndpoint(BaseModel):
+class PrivateEndpoint(EndpointBase):
     """Приватный канал MeshCore (собственный PSK, flood без ACK).
 
     Подходит для закрытых рабочих групп. Доставка не гарантируется (flood-режим).
@@ -34,10 +43,32 @@ class PrivateEndpoint(BaseModel):
     channel_name: str = Field(
         description="Имя канала из вкладки Channels в приложении MeshCore."
     )
-    secret: str = Field(description="PSK канала из настроек MeshCore.")
+    secret: str = Field(
+        description="PSK канала из настроек MeshCore (32 hex-символа = 16 байт)."
+    )
+
+    @field_validator("secret")
+    @classmethod
+    def validate_secret(cls, value: str) -> str:
+        """Проверяет, что PSK — валидный hex ровно из 32 символов (16 байт).
+
+        MeshCore (``set_channel``) требует секрет длиной ровно 16 байт, иначе
+        кидает ``ValueError`` уже при записи канала на устройство. Ловим кривой
+        или неполный PSK на этапе загрузки конфига, а не в рантайме.
+        """
+        if len(value) != 32:
+            raise ValueError(
+                f"PSK private-канала должен содержать ровно 32 hex-символа "
+                f"(16 байт), получено {len(value)}."
+            )
+        try:
+            bytes.fromhex(value)
+        except ValueError:
+            raise ValueError("PSK private-канала должен быть валидной hex-строкой.") from None
+        return value
 
 
-class RoomServerEndpoint(BaseModel):
+class RoomServerEndpoint(EndpointBase):
     """Room Server — адресная доставка с реальным ACK и backfill.
 
     В отличие от ``public``/``private`` гарантирует доставку (есть delivery-ACK
@@ -50,6 +81,19 @@ class RoomServerEndpoint(BaseModel):
     pubkey: str = Field(
         description="Публичный ключ Room Server из приложения MeshCore."
     )
+
+    @field_validator("pubkey")
+    @classmethod
+    def normalize_pubkey(cls, value: str) -> str:
+        """Приводит pubkey к нижнему регистру.
+
+        Библиотека meshcore отдаёт RX-поле ``pubkey_prefix`` через ``bytes.hex()``,
+        то есть всегда в нижнем регистре. Сравнение префикса в адаптере
+        регистрозависимое, поэтому pubkey из конфига, записанный заглавными
+        hex-символами, не совпадёт ни с одним входящим сообщением → тихий дроп RX.
+        Нормализуем здесь, чтобы ключи join'ились независимо от регистра.
+        """
+        return value.lower()
     password: Optional[str] = Field(
         default=None,
         description=(

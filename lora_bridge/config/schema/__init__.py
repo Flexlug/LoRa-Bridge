@@ -1,6 +1,19 @@
 from .app_config import AppConfig
-from .connections import BleConnection, Connection, SerialConnection, TcpConnection, UsbConnection
-from .endpoints import Endpoint, PrivateEndpoint, PublicEndpoint, RoomServerEndpoint
+from .connections import (
+    BleConnection,
+    Connection,
+    ConnectionBase,
+    SerialConnection,
+    TcpConnection,
+    UsbConnection,
+)
+from .endpoints import (
+    Endpoint,
+    EndpointBase,
+    PrivateEndpoint,
+    PublicEndpoint,
+    RoomServerEndpoint,
+)
 from .ids import EndpointName, MessengerId, NodeId
 from .messengers import BaseMessengerConfig, MessengerConfig, TelegramMessengerConfig
 from .nodes import LoraNode, MeshCoreNode
@@ -12,8 +25,10 @@ __all__ = [
     "BaseMessengerConfig",
     "BleConnection",
     "Connection",
+    "ConnectionBase",
     "EgressRate",
     "Endpoint",
+    "EndpointBase",
     "EndpointName",
     "LabelPolicy",
     "LoraNode",
