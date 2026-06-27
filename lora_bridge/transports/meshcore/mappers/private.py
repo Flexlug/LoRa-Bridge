@@ -12,7 +12,7 @@ from typing import Any, ClassVar
 from meshcore import MeshCore
 
 from . import channel_util
-from .handler import EV_CHANNEL_MSG, EndpointHandler, ResolveContext
+from .handler import AuthorResolver, EV_CHANNEL_MSG, EndpointHandler, ResolveContext
 from ....domain.models import Message
 
 
@@ -37,7 +37,10 @@ class PrivateChannelHandler(EndpointHandler):
     async def send(self, mc: MeshCore, text: str, node_id: str) -> Any:
         return await channel_util.send_channel(mc, self.channel_index, text, node_id)
 
-    def try_rx(self, payload: dict[str, Any], node_id: str) -> Message | None:
+    def try_rx(
+        self, payload: dict[str, Any], node_id: str, resolve_author: AuthorResolver
+    ) -> Message | None:
+        # имя автора у каналов уже в тексте — resolve_author не нужен
         if payload.get("channel_idx", -1) != self.channel_index:
             return None
         return channel_util.channel_to_message(payload, self.name, node_id)

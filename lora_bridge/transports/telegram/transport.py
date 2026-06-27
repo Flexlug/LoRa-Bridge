@@ -22,7 +22,6 @@ from ..hub import Hub
 from ...domain.ports import Transport
 from ...domain.models import (
     BRIDGE_TRANSPORT_UID,
-    LORA_SENDER_UID,
     Capabilities,
     ChannelRef,
     DeliveryStatus,
@@ -108,7 +107,10 @@ class TelegramTransport(Transport):
 
     async def send(self, target: ChannelRef, msg: Message) -> SendResult:
         chat_id, thread_id = split_channel(target.channel)
-        if msg.sender.transport_uid in (BRIDGE_TRANSPORT_UID, LORA_SENDER_UID):
+        # Единое правило: bridge-уведомления — как есть; всё с известным именем
+        # (TG-юзер ИЛИ резолвнутый автор room-server поста) — жирным префиксом;
+        # каналы (display_name пуст, ник уже в тексте) — passthrough.
+        if msg.sender.transport_uid == BRIDGE_TRANSPORT_UID or not msg.sender.display_name:
             text = msg.text
         else:
             text = f"<b>{msg.sender.display_name}</b>: {msg.text}"

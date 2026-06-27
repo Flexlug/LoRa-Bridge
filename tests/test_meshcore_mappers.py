@@ -97,22 +97,54 @@ def test_channel_to_message_defaults() -> None:
 
 
 # --- room_server_to_message (CONTACT_MSG_RECV) ---
+#
+# Автор room-server поста едет НЕ в тексте, а структурным полем `signature`
+# (4-байтовый префикс ключа автора; подтверждено реальным пейлоадом: txt_type=2,
+# signature=a096d337, text чистый). pubkey_prefix — это ключ КОМНАТЫ, не автора.
+# Имя резолвится через `resolve_author(signature) -> adv_name`; fallback — сам hex.
 
 
-def test_room_server_to_message_fields() -> None:
+def test_room_server_to_message_resolves_author_name() -> None:
     msg = room_server_to_message(
-        {"pubkey_prefix": "abcdef", "text": "hi", "sender_timestamp": 999},
+        {"pubkey_prefix": "eaa55fab2656", "signature": "a096d337",
+         "text": "hi", "sender_timestamp": 999},
         endpoint="room1",
         node_id="node-b",
+        resolve_author=lambda prefix: "Alice" if prefix == "a096d337" else None,
     )
     assert msg.source.transport_id == "node-b"
     assert msg.source.channel == "room1"
-    # имя отправителя room server = prefix pubkey
-    assert msg.sender.display_name == "abcdef"
+    # имя автора = резолв signature -> adv_name (НЕ pubkey_prefix комнаты)
+    assert msg.sender.display_name == "Alice"
     assert msg.sender.transport_uid == LORA_SENDER_UID
     assert msg.text == "hi"
     # id детерминирован: "{endpoint}:{sender_timestamp}"
     assert msg.id == "room1:999"
+
+
+def test_room_server_to_message_falls_back_to_hex_when_author_unknown() -> None:
+    # автор вне таблицы контактов устройства -> резолвер вернул None -> hex-префикс
+    msg = room_server_to_message(
+        {"signature": "a096d337", "text": "hi", "sender_timestamp": 1},
+        endpoint="room1",
+        node_id="n",
+        resolve_author=lambda _prefix: None,
+    )
+    assert msg.sender.display_name == "a096d337"
+
+
+def test_room_server_to_message_falls_back_to_hex_without_resolver() -> None:
+    msg = room_server_to_message(
+        {"signature": "a096d337", "text": "hi"}, endpoint="r", node_id="n"
+    )
+    assert msg.sender.display_name == "a096d337"
+
+
+def test_room_server_to_message_no_signature_has_no_author() -> None:
+    # нет signature (напр. txt_type != 2) -> имя неизвестно, passthrough
+    msg = room_server_to_message({"text": "hi"}, endpoint="r", node_id="n")
+    assert msg.sender.display_name == ""
+    assert msg.text == "hi"
 
 
 def test_room_server_to_message_defaults() -> None:

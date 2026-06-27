@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, ClassVar, Iterable
+from typing import Any, Callable, ClassVar, Iterable
 
 from meshcore import EventType as McEventType, MeshCore
 
@@ -22,6 +22,11 @@ log = logging.getLogger(__name__)
 
 EV_CHANNEL_MSG = McEventType.CHANNEL_MSG_RECV
 EV_CONTACT_MSG = McEventType.CONTACT_MSG_RECV
+
+# Резолвер автора RX: префикс публичного ключа -> человекочитаемое имя (adv_name)
+# или None, если контакт не найден. Нужен room-server'у (автор едет префиксом ключа,
+# не в тексте); канальные хэндлеры его игнорируют.
+AuthorResolver = Callable[[str], str | None]
 
 
 @dataclass(frozen=True)
@@ -54,20 +59,31 @@ class EndpointHandler(ABC):
         """Отправить текст; вернуть сырой ответ устройства (классификация — в транспорте)."""
 
     @abstractmethod
-    def try_rx(self, payload: dict[str, Any], node_id: str) -> Message | None:
-        """Если событие адресовано этому эндпоинту — вернуть Message, иначе None."""
+    def try_rx(
+        self, payload: dict[str, Any], node_id: str, resolve_author: AuthorResolver
+    ) -> Message | None:
+        """Если событие адресовано этому эндпоинту — вернуть Message, иначе None.
+
+        ``resolve_author`` резолвит префикс ключа автора в имя (нужно room-server'у;
+        канальные хэндлеры его не используют — имя у них уже в тексте).
+        """
 
     @abstractmethod
     def rx_key(self) -> str:
         """Ключ маршрутизации RX (channel_idx / pubkey prefix) — для диагностики дропов."""
 
 
-def route_rx(handlers: Iterable[EndpointHandler], event: Any, node_id: str) -> Message | None:
+def route_rx(
+    handlers: Iterable[EndpointHandler],
+    event: Any,
+    node_id: str,
+    resolve_author: AuthorResolver,
+) -> Message | None:
     """Отдать RX-событие первому хэндлеру нужного типа, который его опознает."""
     payload = event.payload if isinstance(event.payload, dict) else {}
     candidates = [h for h in handlers if h.rx_event_type == event.type]
     for handler in candidates:
-        msg = handler.try_rx(payload, node_id)
+        msg = handler.try_rx(payload, node_id, resolve_author)
         if msg is not None:
             return msg
     if candidates:
