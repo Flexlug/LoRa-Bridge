@@ -148,6 +148,10 @@ async def ensure_contact(
 async def login_room_server(
     mc: Any, *, name: str, pubkey: str, password: str | None, node_id: str
 ) -> None:
+    # send_login_sync сам шлёт login и ждёт LOGIN_SUCCESS (плюс держит mesh-lock).
+    # min_timeout=15 — нижняя граница ожидания (раньше было max(suggested, 15)).
+    # Подписка на LOGIN_FAILED нужна только чтобы отличить «неверный пароль» от
+    # «нет ответа» — сам send_login_sync вернёт лишь event-или-None.
     login_failed = False
 
     def on_login_failed(_event: object) -> None:
@@ -156,28 +160,18 @@ async def login_room_server(
 
     sub = mc.commands.dispatcher.subscribe(McEventType.LOGIN_FAILED, on_login_failed)
     try:
-        sent = await mc.commands._send_login_raw(pubkey, password or "")  # noqa: SLF001
-        if sent is None or sent.type == McEventType.ERROR:
-            log.warning(
-                "нода '%s': логин в room server '%s' — устройство вернуло ошибку: %s",
-                node_id, name, sent.payload if sent else "нет ответа",
-            )
-            return
-        suggested_s = sent.payload.get("suggested_timeout", 0) / 800
-        wait_s = max(suggested_s, 15.0)
-        log.debug(
-            "нода '%s': логин в '%s' отправлен, suggested=%.1f с, ждём LOGIN_SUCCESS %.1f с",
-            node_id, name, suggested_s, wait_s,
-        )
-        login_event = await mc.commands.dispatcher.wait_for_event(
-            McEventType.LOGIN_SUCCESS, timeout=wait_s
+        login_event = await mc.commands.send_login_sync(  # verify
+            pubkey, password or "", min_timeout=15.0
         )
         if login_event is not None:
             log.info("нода '%s': логин в room server '%s' успешен", node_id, name)
         elif login_failed:
             log.warning("нода '%s': логин в room server '%s' отклонён (неверный пароль?)", node_id, name)
         else:
-            log.warning("нода '%s': логин в room server '%s' — нет ответа (вне зоны?)", node_id, name)
+            log.warning(
+                "нода '%s': логин в room server '%s' — нет ответа (вне зоны / ошибка устройства?)",
+                node_id, name,
+            )
     finally:
         sub.unsubscribe()
 
