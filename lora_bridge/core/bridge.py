@@ -22,7 +22,7 @@ from .queue import CommitQueue, QueueItem
 from .routing import LoraMember, MessengerMember, RoomRegistry, RoomRoute
 from .status import StatusDispatcher
 from .supervisor import Supervisor
-from .transform import build_lora_text, oversize_bytes
+from .transform import build_lora_text, oversize_bytes, relay_lora_text
 from ..domain.models import (
     ChannelRef,
     DeliveryStatus,
@@ -173,7 +173,10 @@ class Bridge:
             tag = self._messengers[src.source.transport_id].tag
             text = build_lora_text(src, room.writable_messenger_count, tag, node.label_fmt)
         else:
-            text = src.text  # LoRa↔LoRa relay: форвардим как есть (§12.1)
+            # LoRa↔LoRa relay: автор канала живёт в display_name (тело очищено
+            # маппером), поэтому восстанавливаем его в wire-текст, иначе relay
+            # потерял бы имя автора (§12.1).
+            text = relay_lora_text(src)
 
         over = oversize_bytes(text, node.transport.capabilities.max_text_bytes)
         if over > 0:

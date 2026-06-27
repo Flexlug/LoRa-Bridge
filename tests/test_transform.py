@@ -4,6 +4,7 @@ from lora_bridge.core.transform import (
     build_lora_text,
     clip_utf8,
     oversize_bytes,
+    relay_lora_text,
     utf8_len,
 )
 from lora_bridge.domain.models import ChannelRef, Identity, LabelFormat, Message
@@ -16,6 +17,16 @@ def _msg(name: str, text: str) -> Message:
         sender=Identity(display_name=name, transport_uid="u1"),
         text=text,
     )
+
+
+def test_relay_lora_text_rebuilds_author_bracket() -> None:
+    # LoRa->LoRa relay: автор из display_name -> [ник] текст (echo-safe, без ": ")
+    assert relay_lora_text(_msg("Bob", "из сети A")) == "[Bob] из сети A"
+
+
+def test_relay_lora_text_without_author_passthrough() -> None:
+    # имя неизвестно (display_name пуст) -> текст как есть
+    assert relay_lora_text(_msg("", "[TG:Alex] hi")) == "[TG:Alex] hi"
 
 
 def test_utf8_len_counts_bytes_not_chars():

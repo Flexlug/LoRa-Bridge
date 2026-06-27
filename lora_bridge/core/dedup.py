@@ -21,7 +21,10 @@ class TtlDedup:
         # origin_tag, если транспорт его проставил; иначе контентный хеш.
         if msg.origin_tag:
             return msg.origin_tag
-        return f"{msg.sender.transport_uid}\x00{msg.text}"
+        # display_name в ключе: mesh-отправители делят один transport_uid
+        # (LORA_SENDER_UID), поэтому автора различает только имя (иначе разные
+        # авторы с одинаковым текстом схлопнулись бы в дубль).
+        return f"{msg.sender.transport_uid}\x00{msg.sender.display_name}\x00{msg.text}"
 
     def accept(self, msg: Message) -> bool:
         """``True`` — сообщение новое (пропускаем); ``False`` — дубль (глотаем)."""

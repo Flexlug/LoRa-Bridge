@@ -90,9 +90,40 @@ def test_channel_to_message_fields() -> None:
     assert msg.id.startswith("emergency:123:")
 
 
+def test_channel_to_message_parses_author_prefix() -> None:
+    # каналы несут автора в тексте как "Имя: текст" -> в display_name, текст чистый
+    msg = channel_to_message(
+        {"sender_timestamp": 1, "text": "Alice: привет всем"}, endpoint="ch", node_id="n"
+    )
+    assert msg.sender.display_name == "Alice"
+    assert msg.text == "привет всем"
+
+
+def test_channel_to_message_no_colon_keeps_text() -> None:
+    # нет ": " (напр. наш скобочный формат) -> имя пустое, текст не трогаем
+    msg = channel_to_message({"text": "[TG:Alex] hi"}, endpoint="ch", node_id="n")
+    assert msg.sender.display_name == ""
+    assert msg.text == "[TG:Alex] hi"
+
+
+def test_channel_to_message_empty_name_keeps_text() -> None:
+    # ": " есть, но левая часть пуста -> не считаем это автором
+    msg = channel_to_message({"text": ": двоеточие в начале"}, endpoint="ch", node_id="n")
+    assert msg.sender.display_name == ""
+    assert msg.text == ": двоеточие в начале"
+
+
+def test_channel_to_message_splits_on_first_colon_space() -> None:
+    # режем по ПЕРВОМУ ": ", остальные двоеточия — часть текста
+    msg = channel_to_message({"text": "Bob: время: 10:30"}, endpoint="ch", node_id="n")
+    assert msg.sender.display_name == "Bob"
+    assert msg.text == "время: 10:30"
+
+
 def test_channel_to_message_defaults() -> None:
     msg = channel_to_message({}, endpoint="ch", node_id="n")
     assert msg.text == ""
+    assert msg.sender.display_name == ""
     assert msg.id.startswith("ch:0:")
 
 
