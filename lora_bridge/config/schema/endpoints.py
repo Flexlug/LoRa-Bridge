@@ -12,7 +12,16 @@ from typing import Annotated, Literal, Optional, Union
 from pydantic import BaseModel, Field
 
 
-class PublicEndpoint(BaseModel):
+class EndpointBase(BaseModel):
+    """Маркерный базовый класс для всех типов эндпоинтов.
+
+    Существует ради инверсии зависимости: конкретный класс наследуется отсюда,
+    а guard-тест сверяет список наследников с union ``Endpoint`` и падает,
+    если новый тип забыли дописать в union (см. ``tests/test_config_schema.py``).
+    """
+
+
+class PublicEndpoint(EndpointBase):
     """Публичный канал MeshCore (общий PSK, flood без ACK).
 
     Подходит для общего чата. Доставка не гарантируется.
@@ -24,7 +33,7 @@ class PublicEndpoint(BaseModel):
     )
 
 
-class PrivateEndpoint(BaseModel):
+class PrivateEndpoint(EndpointBase):
     """Приватный канал MeshCore (собственный PSK, flood без ACK).
 
     Подходит для закрытых рабочих групп. Доставка не гарантируется (flood-режим).
@@ -37,7 +46,7 @@ class PrivateEndpoint(BaseModel):
     secret: str = Field(description="PSK канала из настроек MeshCore.")
 
 
-class RoomServerEndpoint(BaseModel):
+class RoomServerEndpoint(EndpointBase):
     """Room Server — адресная доставка с реальным ACK и backfill.
 
     В отличие от ``public``/``private`` гарантирует доставку (есть delivery-ACK

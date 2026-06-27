@@ -13,7 +13,16 @@ from typing import Annotated, Literal, Union
 from pydantic import BaseModel, Field
 
 
-class UsbConnection(BaseModel):
+class ConnectionBase(BaseModel):
+    """Маркерный базовый класс для всех типов подключения.
+
+    Существует ради инверсии зависимости: конкретный класс наследуется отсюда,
+    а guard-тест сверяет список наследников с union ``Connection`` и падает,
+    если новый тип забыли дописать в union (см. ``tests/test_config_schema.py``).
+    """
+
+
+class UsbConnection(ConnectionBase):
     """Подключение по USB. Узел адресуется парой VID:PID."""
 
     type: Literal["usb"] = Field(description="Тег дискриминатора — должно быть ``usb``.")
@@ -26,7 +35,7 @@ class UsbConnection(BaseModel):
     )
 
 
-class SerialConnection(BaseModel):
+class SerialConnection(ConnectionBase):
     """Прямое подключение по serial-порту (виртуальному или физическому)."""
 
     type: Literal["serial"] = Field(description="Тег дискриминатора — должно быть ``serial``.")
@@ -37,7 +46,7 @@ class SerialConnection(BaseModel):
     )
 
 
-class TcpConnection(BaseModel):
+class TcpConnection(ConnectionBase):
     """Подключение к companion-серверу MeshCore по TCP."""
 
     type: Literal["tcp"] = Field(description="Тег дискриминатора — должно быть ``tcp``.")
@@ -45,7 +54,7 @@ class TcpConnection(BaseModel):
     port: int = Field(description="TCP-порт companion-сервера.")
 
 
-class BleConnection(BaseModel):
+class BleConnection(ConnectionBase):
     """Подключение по Bluetooth Low Energy."""
 
     type: Literal["ble"] = Field(description="Тег дискриминатора — должно быть ``ble``.")

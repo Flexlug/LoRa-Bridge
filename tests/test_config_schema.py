@@ -4,10 +4,16 @@
 на уровне отдельных моделей — без сборки полного AppConfig.
 """
 
+from typing import get_args
+
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
 from lora_bridge.config.schema import (
+    Connection,
+    ConnectionBase,
+    Endpoint,
+    EndpointBase,
     MessengerConfig,
     MeshCoreNode,
     TelegramMessengerConfig,
@@ -43,6 +49,30 @@ def _node(connection, endpoints=None):
 )
 def test_all_connection_types_valid(conn):
     MeshCoreNode.model_validate(_node(conn))
+
+
+def _assert_union_matches_subclasses(union, base):
+    """Сверяет ветки дискриминированного union со списком наследников базы.
+
+    Стережёт сценарий «добавил новый класс, но забыл дописать в union» —
+    тогда падает здесь с понятным сообщением, а не тихо игнорируется при
+    валидации конфига. ``union`` имеет вид ``Annotated[Union[...], Field(...)]``,
+    поэтому ветки достаём двойным ``get_args``.
+    """
+    declared = set(get_args(get_args(union)[0]))
+    subclasses = set(base.__subclasses__())
+    assert declared == subclasses, (
+        f"рассинхрон union и наследников {base.__name__}: "
+        f"в union нет {subclasses - declared}, лишние в union {declared - subclasses}"
+    )
+
+
+def test_connection_union_is_exhaustive():
+    _assert_union_matches_subclasses(Connection, ConnectionBase)
+
+
+def test_endpoint_union_is_exhaustive():
+    _assert_union_matches_subclasses(Endpoint, EndpointBase)
 
 
 # ---------------------------------------------------------------------------
