@@ -1,8 +1,8 @@
 """Telegram-адаптер: порт ``Transport`` поверх ``aiogram``.
 
-Особенности (§9/§10/§11): фильтрация по топику (forum thread), реакции-статусы
-(``setMessageReaction``), отключённый privacy mode у бота. Канал-эндпоинт
-кодируется как ``chat`` или ``chat#topic`` (см. ``messenger_channel``).
+Тонкий оркестратор поверх одного бота: жизненный цикл (polling), нормализация
+входящих в доменный ``Message`` и отправка. Кодирование канала (``chat`` /
+``chat#topic``) живёт в ``channels``, статус-фидбэк реакциями — в ``reactions``.
 
 Без живого токена адаптер не проверялся — места вызовов API помечены ``# verify``.
 """
@@ -13,9 +13,11 @@ import asyncio
 import logging
 from typing import AsyncIterator, Optional, TYPE_CHECKING
 
-from aiogram import Bot, Dispatcher, F
-from aiogram.types import Message as TgMessage, ReactionTypeEmoji
+from aiogram import Bot, Dispatcher, F, Router
+from aiogram.types import Message as TgMessage
 
+from .commands import build_command_router
+from .reactions import ReactionFeedback
 from ..hub import Hub
 from ...domain.ports import Transport
 from ...domain.models import (
@@ -37,111 +39,14 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-# Только эмодзи из whitelist-а Telegram (REACTION_INVALID иначе).
-# Актуальный список — в docstring aiogram.types.ReactionTypeEmoji.emoji.
-_PENDING_EMOJI = "👀"   # бот принял сообщение, ждёт отправки в LoRa
-
-ERROR_EMOJI: dict[DeliveryStatus, str] = {
-    DeliveryStatus.FAILED: "😢",   # ошибка TX — важно показать
-    DeliveryStatus.UNKNOWN: "🤔",  # статус неизвестен после рестарта
-}
-REJECT_EMOJI: dict[RejectReason, str] = {
-    RejectReason.TOO_LONG: "🤨",    # сообщение не влезло
-    RejectReason.RATE_LIMIT: "🥱",  # эфир перегружен
-    RejectReason.TTL_EXPIRED: "😴", # протухло в очереди
-}
-
-# Задержка перед простановкой реакции (секунды).
-# Если сообщение отправилось быстрее этого порога — 👀 вообще не появится.
-# MeshCore MSG_OK для public/private каналов приходит за 0.5–1.5с;
-# 2.0с даёт запас чтобы 👀 не мелькал при нормальной работе.
-REACTION_DEBOUNCE_S = 2.0
-
-
-class ReactionDebouncer:
-    """Откладывает простановку реакции; SENT немедленно очищает.
-
-    Защита от гонки: generation-счётчик на каждый (chat_id, message_id).
-    Даже если callback «убежал» мимо cancel() и дошёл до await — он
-    проверяет generation и отказывается, если SENT уже сменил его.
-
-    Ключ — (chat_id, message_id) чтобы не было коллизий между чатами.
-    """
-
-    def __init__(self, delay: float = REACTION_DEBOUNCE_S) -> None:
-        self._delay = delay
-        self._tasks: dict[tuple[int, str], asyncio.Task[None]] = {}
-        self._generation: dict[tuple[int, str], int] = {}
-        self._sent: set[tuple[int, str]] = set()  # ключи где реакция реально выставлена
-
-    def schedule(
-        self,
-        key: tuple[int, str],
-        reaction: list[ReactionTypeEmoji],
-        bot: Bot,
-    ) -> None:
-        """Запланировать реакцию с задержкой. Отменяет предыдущий callback для этого ключа."""
-        if prev := self._tasks.pop(key, None):
-            prev.cancel()
-        gen = self._generation.get(key, -1) + 1
-        self._generation[key] = gen
-        self._tasks[key] = asyncio.create_task(
-            self._delayed_apply(key, gen, reaction, bot)
-        )
-
-    async def clear_now(self, key: tuple[int, str], bot: Bot) -> None:
-        """Немедленно убрать реакцию (SENT). Отменяет любой отложенный callback.
-
-        API-вызов делается только если реакция была реально выставлена —
-        иначе Telegram вернёт REACTION_EMPTY.
-        """
-        if prev := self._tasks.pop(key, None):
-            prev.cancel()
-            # Задача ещё спала — реакция не была выставлена, чистить нечего
-            self._generation[key] = self._generation.get(key, -1) + 1
-            return
-
-        self._generation[key] = self._generation.get(key, -1) + 1
-
-        if key not in self._sent:
-            return  # реакция не выставлялась — REACTION_EMPTY если звонить
-
-        self._sent.discard(key)
-        chat_id, message_id = key
-        try:
-            await bot.set_message_reaction(chat_id, int(message_id), reaction=[])
-        except Exception:  # noqa: BLE001
-            log.debug("clear реакции не удался для %s/%s", chat_id, message_id, exc_info=True)
-
-    async def _delayed_apply(
-        self,
-        key: tuple[int, str],
-        gen: int,
-        reaction: list[ReactionTypeEmoji],
-        bot: Bot,
-    ) -> None:
-        try:
-            await asyncio.sleep(self._delay)
-        except asyncio.CancelledError:
-            return
-
-        # Проверяем generation после пробуждения — не пришёл ли SENT пока спали
-        if self._generation.get(key) != gen:
-            return
-
-        self._tasks.pop(key, None)
-        chat_id, message_id = key
-        emoji = reaction[0].emoji if reaction else "[]"
-        log.debug("debouncer: выставляю реакцию %s на сообщение %s/%s", emoji, chat_id, message_id)
-        try:
-            await bot.set_message_reaction(chat_id, int(message_id), reaction=reaction)
-            self._sent.add(key)  # реакция выставлена — теперь clear_now знает что чистить
-        except Exception:  # noqa: BLE001
-            log.debug("set_message_reaction не удался для %s/%s", chat_id, message_id, exc_info=True)
-
 
 def split_channel(channel: str) -> tuple[int, Optional[int]]:
-    """``"chat"`` / ``"chat#topic"`` → (chat_id, thread_id|None)."""
+    """``"chat"`` / ``"chat#topic"`` → ``(chat_id, thread_id|None)``. Инверсия ``messenger_channel``.
+
+    Декод нужен только на send-стороне адаптера (chat_id/thread_id для ``bot.send_message``),
+    поэтому живёт здесь, а не в (generic) домене рядом с ``messenger_channel``. Round-trip
+    с энкодером закреплён guard-тестом ``tests/test_telegram_channels.py``.
+    """
     if "#" in channel:
         chat, topic = channel.split("#", 1)
         return int(chat), int(topic)
@@ -163,8 +68,13 @@ class TelegramTransport(Transport):
         self._hub = Hub()
         self._bot = Bot(config.token)
         self._dp = Dispatcher()
-        self._dp.message.register(self.on_message, F.text)  # verify: фильтр текстовых
-        self._debouncer = ReactionDebouncer()
+        # Порядок включения = порядок диспетча: команды перехватываются ДО bridge-хэндлера,
+        # поэтому транспорт-локальные команды не доходят до on_message → не текут в pipeline.
+        self._dp.include_router(build_command_router(self.id))
+        bridge = Router(name=f"telegram-bridge:{self.id}")
+        bridge.message.register(self.on_message, F.text)  # verify: фильтр текстовых
+        self._dp.include_router(bridge)
+        self._reactions = ReactionFeedback(self._bot)
 
     async def start(self) -> None:
         me = await self._bot.get_me()  # verify: бот доступен (sanity)
@@ -183,7 +93,7 @@ class TelegramTransport(Transport):
         await self._hub.publish(self.normalize(message))
 
     def normalize(self, message: TgMessage) -> Message:
-        thread = getattr(message, "message_thread_id", None)
+        thread = message.message_thread_id
         chat_id = str(message.chat.id)
         user = message.from_user
         return Message(
@@ -221,27 +131,5 @@ class TelegramTransport(Transport):
         status: DeliveryStatus,
         reason: Optional[RejectReason] = None,
     ) -> None:
-        if status == DeliveryStatus.TRANSMITTING:
-            return  # промежуточный — не трогаем реакцию
-
         chat_id, _ = split_channel(origin.channel)
-        key = (chat_id, message_id)
-
-        if status == DeliveryStatus.SENT:
-            # Успех: немедленно отменить pending callback и убрать реакцию
-            await self._debouncer.clear_now(key, self._bot)
-            return
-
-        # Для всех остальных статусов — откладываем через debouncer.
-        # Если SENT придёт раньше чем истечёт задержка — 👀 вообще не появится.
-        if status == DeliveryStatus.PENDING:
-            reaction: list[ReactionTypeEmoji] = [ReactionTypeEmoji(emoji=_PENDING_EMOJI)]
-        elif reason is not None:
-            emoji = REJECT_EMOJI.get(reason)
-            reaction = [ReactionTypeEmoji(emoji=emoji)] if emoji else []
-        else:
-            emoji = ERROR_EMOJI.get(status)
-            reaction = [ReactionTypeEmoji(emoji=emoji)] if emoji else []
-
-        if reaction:
-            self._debouncer.schedule(key, reaction, self._bot)
+        await self._reactions.report(chat_id, message_id, status, reason)
