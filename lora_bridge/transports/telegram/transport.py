@@ -13,10 +13,11 @@ import asyncio
 import logging
 from typing import AsyncIterator, Optional, TYPE_CHECKING
 
-from aiogram import Bot, Dispatcher, F
+from aiogram import Bot, Dispatcher, F, Router
 from aiogram.types import Message as TgMessage
 
 from .channels import split_channel
+from .commands import build_command_router
 from .reactions import ReactionFeedback
 from ..hub import Hub
 from ...domain.ports import Transport
@@ -55,7 +56,12 @@ class TelegramTransport(Transport):
         self._hub = Hub()
         self._bot = Bot(config.token)
         self._dp = Dispatcher()
-        self._dp.message.register(self.on_message, F.text)  # verify: фильтр текстовых
+        # Порядок включения = порядок диспетча: команды перехватываются ДО bridge-хэндлера,
+        # поэтому транспорт-локальные команды не доходят до on_message → не текут в pipeline.
+        self._dp.include_router(build_command_router(self.id))
+        bridge = Router(name=f"telegram-bridge:{self.id}")
+        bridge.message.register(self.on_message, F.text)  # verify: фильтр текстовых
+        self._dp.include_router(bridge)
         self._reactions = ReactionFeedback(self._bot)
 
     async def start(self) -> None:
