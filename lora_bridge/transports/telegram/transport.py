@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import asyncio
+import html
 import logging
 from typing import AsyncIterator, Optional, TYPE_CHECKING
 
@@ -111,12 +112,17 @@ class TelegramTransport(Transport):
         # (TG-юзер ИЛИ резолвнутый автор room-server поста) — жирным префиксом;
         # каналы (display_name пуст, ник уже в тексте) — passthrough.
         if msg.sender.transport_uid == BRIDGE_TRANSPORT_UID or not msg.sender.display_name:
+            # markup не добавляем → шлём plain без parse_mode, иначе спецсимволы
+            # тела (<, &, незакрытый тег) из эфира уронили бы HTML-парсер Telegram.
             text = msg.text
+            parse_mode = None
         else:
-            text = f"<b>{msg.sender.display_name}</b>: {msg.text}"
+            # имя/тело экранируем — иначе те же спецсимволы ломают отправку.
+            text = f"<b>{html.escape(msg.sender.display_name)}</b>: {html.escape(msg.text)}"
+            parse_mode = "HTML"
         try:
             await self._bot.send_message(  # verify
-                chat_id, text, message_thread_id=thread_id, parse_mode="HTML"
+                chat_id, text, message_thread_id=thread_id, parse_mode=parse_mode
             )
             return SendResult.success()
         except Exception as exc:  # noqa: BLE001
