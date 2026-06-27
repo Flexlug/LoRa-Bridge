@@ -95,7 +95,7 @@ class MeshCoreTransport(Transport):
         # (_resolve_author -> get_contact_by_key_prefix). auto_update держит его свежим
         # по contact-change событиям; ensure_contacts — первичная загрузка после connect.
         self._mc.auto_update_contacts = True
-        await self._mc.ensure_contacts()  # verify: первичная загрузка кэша контактов на железе
+        await self._mc.ensure_contacts()  # первичная загрузка кэша контактов
         ctx = ResolveContext(
             mc=self._mc,
             node_id=self.id,
