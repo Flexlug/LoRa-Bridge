@@ -11,7 +11,7 @@ requires-python = ">=3.11"
 license = { file = "LICENSE" }
 dependencies = [
     "anyio>=4.0",          # структурная конкуррентность (task groups, memory streams)
-    "meshcore>=1.0",       # companion-протокол MeshCore (meshcore_py)
+    "meshcore>=2.3,<3",    # companion-протокол MeshCore (meshcore_py); адаптер таргетит 2.x API, мажор закрыт — типы либы влияют на mypy (follow_untyped_imports)
     "aiogram>=3.0",        # Telegram Bot API
     "pydantic>=2.0",       # валидация конфига
     "envyaml>=1.2",        # парсинг config.yaml + подстановка ${ENV_VAR}; тянет pyyaml
@@ -23,7 +23,7 @@ dev = [
     "pytest>=8.0",
     "pytest-anyio>=0.0",
     "ruff>=0.4",
-    "mypy>=1.8",
+    "mypy>=1.14",  # per-module follow_untyped_imports (см. [tool.mypy] ниже) — добавлен в 1.14.0
 ]
 docs = [
     "mkdocs>=1.6",
@@ -45,6 +45,13 @@ target-version = "py311"
 [tool.mypy]
 python_version = "3.11"
 strict = true
+
+# meshcore поставляется с inline-аннотациями, но без py.typed-маркера.
+# Разрешаем mypy читать их напрямую — тогда MeshCore становится настоящим типом,
+# а не Any. Цена: типы либы влияют на наш mypy (поэтому мажор закреплён <2).
+[[tool.mypy.overrides]]
+module = "meshcore.*"
+follow_untyped_imports = true
 
 [tool.pytest.ini_options]
 anyio_mode = "auto"

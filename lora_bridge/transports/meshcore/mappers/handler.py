@@ -14,7 +14,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, ClassVar, Iterable
 
-from meshcore import EventType as McEventType
+from meshcore import EventType as McEventType, MeshCore
 
 from ....domain.models import Message
 
@@ -32,7 +32,7 @@ class ResolveContext:
     всех channel-эндпоинтов узла (для вытеснения чужих слотов при переполнении).
     """
 
-    mc: Any  # объект meshcore.MeshCore
+    mc: MeshCore
     node_id: str
     channel_names: frozenset[str]
     override_oldest_channel: bool
@@ -50,7 +50,7 @@ class EndpointHandler(ABC):
         """Подготовить эндпоинт к работе на устройстве (слот канала / контакт + login)."""
 
     @abstractmethod
-    async def send(self, mc: Any, text: str, node_id: str) -> Any:
+    async def send(self, mc: MeshCore, text: str, node_id: str) -> Any:
         """Отправить текст; вернуть сырой ответ устройства (классификация — в транспорте)."""
 
     @abstractmethod

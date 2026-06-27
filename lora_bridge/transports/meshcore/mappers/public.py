@@ -9,6 +9,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, ClassVar
 
+from meshcore import MeshCore
+
 from . import channel_util
 from .handler import EV_CHANNEL_MSG, EndpointHandler, ResolveContext
 from ....domain.models import Message
@@ -31,7 +33,7 @@ class PublicChannelHandler(EndpointHandler):
             override_oldest=ctx.override_oldest_channel,
         )
 
-    async def send(self, mc: Any, text: str, node_id: str) -> Any:
+    async def send(self, mc: MeshCore, text: str, node_id: str) -> Any:
         return await channel_util.send_channel(mc, self.channel_index, text, node_id)
 
     def try_rx(self, payload: dict[str, Any], node_id: str) -> Message | None:

@@ -9,13 +9,14 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Awaitable, assert_never
+from typing import Awaitable, assert_never
 
 from meshcore import MeshCore
 from serial.tools import list_ports
 
 from ...config.schema import (
     BleConnection,
+    Connection,
     SerialConnection,
     TcpConnection,
     UsbConnection,
@@ -23,11 +24,8 @@ from ...config.schema import (
 
 log = logging.getLogger(__name__)
 
-# Тип объединения соединений; берём из конкретных моделей конфига.
-Connection = TcpConnection | SerialConnection | UsbConnection | BleConnection
 
-
-async def connect_mc(coro: Awaitable[Any], label: str, node_id: str) -> Any:
+async def connect_mc(coro: Awaitable[MeshCore], label: str, node_id: str) -> MeshCore:
     try:
         mc = await coro
     except Exception as exc:
@@ -38,7 +36,7 @@ async def connect_mc(coro: Awaitable[Any], label: str, node_id: str) -> Any:
     return mc
 
 
-async def connect(connection: Connection, node_id: str) -> Any:
+async def connect(connection: Connection, node_id: str) -> MeshCore:
     match connection:
         case TcpConnection(host=host, port=port):
             return await connect_mc(
@@ -70,5 +68,5 @@ def port_by_vidpid(device_id: str) -> str:
     raise RuntimeError(f"USB-устройство {device_id} не найдено")
 
 
-async def set_time(mc: Any) -> None:
+async def set_time(mc: MeshCore) -> None:
     await mc.commands.set_time(int(time.time()))  # verify

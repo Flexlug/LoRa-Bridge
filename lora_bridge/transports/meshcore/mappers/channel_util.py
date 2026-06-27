@@ -17,6 +17,8 @@ import hashlib
 import logging
 from typing import Any
 
+from meshcore import MeshCore
+
 from ....domain.models import (
     ChannelRef,
     Identity,
@@ -34,7 +36,7 @@ def expected_channel_hash(channel_name: str, secret_bytes: bytes | None) -> str:
 
 
 async def resolve_channel(
-    mc: Any,
+    mc: MeshCore,
     *,
     channel_name: str,
     secret_bytes: bytes | None,
@@ -114,7 +116,7 @@ async def resolve_channel(
 
 
 async def create_channel(
-    mc: Any, *, channel_name: str, secret_bytes: bytes | None, slot: int, node_id: str
+    mc: MeshCore, *, channel_name: str, secret_bytes: bytes | None, slot: int, node_id: str
 ) -> int:
     """Записать канал в пустой слот через set_channel.
 
@@ -133,7 +135,9 @@ async def create_channel(
         node_id, slot, channel_name,
         "auto" if secret_bytes is None else secret_bytes.hex(),
     )
-    res = await mc.commands.set_channel(slot, channel_name, secret_bytes)  # verify
+    # secret_bytes=None валиден (auto-PSK из имени), но либа аннотировала параметр как
+    # bytes, а не Optional[bytes] — подавляем неточность типа на стыке.
+    res = await mc.commands.set_channel(slot, channel_name, secret_bytes)  # type: ignore[arg-type]  # verify
     log.debug("нода '%s': ответ set_channel: type=%s payload=%s", node_id, res.type, res.payload)
     if res.is_error():
         raise RuntimeError(
@@ -143,7 +147,9 @@ async def create_channel(
     return slot
 
 
-async def send_channel(mc: Any, channel_index: int | None, text: str, node_id: str) -> Any:
+async def send_channel(mc: MeshCore, channel_index: int | None, text: str, node_id: str) -> Any:
+    if channel_index is None:
+        raise RuntimeError(f"нода '{node_id}': канал не разрешён (resolve не выполнен) — нечего слать")
     log.debug("нода '%s': send_chan_msg слот=%s текст=%r", node_id, channel_index, text)
     return await mc.commands.send_chan_msg(channel_index, text)
 

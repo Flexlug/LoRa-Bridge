@@ -22,8 +22,7 @@ import logging
 from typing import Any, AsyncIterator, Optional, TYPE_CHECKING
 
 import anyio
-
-from meshcore import EventType as McEventType
+from meshcore import EventType as McEventType, MeshCore
 
 from . import connection
 from .mappers import (
@@ -71,7 +70,7 @@ class MeshCoreTransport(Transport):
         self._override_oldest_contact = node.policies.override_oldest_contact_on_full
         self._override_oldest_channel = node.policies.override_oldest_channel_on_full
         self._hub = Hub()
-        self._mc: Any = None  # объект meshcore.MeshCore
+        self._mc: MeshCore | None = None
         self._endpoints: dict[str, EndpointHandler] = {
             name: init_endpoint_handler(name, ep) for name, ep in node.endpoints.items()
         }
@@ -102,7 +101,9 @@ class MeshCoreTransport(Transport):
         for handler in self._endpoints.values():
             await handler.resolve(ctx)  # R3
         await self._mc.start_auto_message_fetching()  # verify; R2 / баг #1232
-        self._mc.subscribe(None, self.on_event)
+        # Либа типизирует колбэк как Future-возвращающий, но принимает и async (Coroutine) —
+        # подавляем неточность типа на стыке.
+        self._mc.subscribe(None, self.on_event)  # type: ignore[arg-type]
         log.info("нода '%s' запущена: %d эндпоинтов активно", self.id, len(self._endpoints))
 
     async def stop(self) -> None:
@@ -147,7 +148,7 @@ class MeshCoreTransport(Transport):
         mc, self._mc = self._mc, None
         if mc is not None:
             try:
-                await mc.disconnect()  # verify
+                await mc.disconnect()  # type: ignore[no-untyped-call]  # verify; у метода либы нет аннотаций
             except Exception:
                 pass
 

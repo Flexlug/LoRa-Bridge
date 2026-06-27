@@ -13,7 +13,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, ClassVar
 
-from meshcore import EventType as McEventType
+from meshcore import EventType as McEventType, MeshCore
 
 from .handler import EV_CONTACT_MSG, EndpointHandler, ResolveContext
 from ....domain.models import (
@@ -43,7 +43,7 @@ class RoomServerHandler(EndpointHandler):
             override_oldest_contact=ctx.override_oldest_contact,
         )
 
-    async def send(self, mc: Any, text: str, node_id: str) -> Any:
+    async def send(self, mc: MeshCore, text: str, node_id: str) -> Any:
         return await send_room_server(mc, self.pubkey, text)
 
     def try_rx(self, payload: dict[str, Any], node_id: str) -> Message | None:
@@ -57,7 +57,7 @@ class RoomServerHandler(EndpointHandler):
 
 
 async def resolve_room_server(
-    mc: Any, *, name: str, pubkey: str, password: str | None, node_id: str,
+    mc: MeshCore, *, name: str, pubkey: str, password: str | None, node_id: str,
     override_oldest_contact: bool,
 ) -> None:
     """Подготовить room server к работе: контакт в таблице + login."""
@@ -81,7 +81,7 @@ async def resolve_or_override(
     return False
 
 
-async def try_add_contact(mc: Any, contact: dict[str, Any], node_id: str) -> bool:
+async def try_add_contact(mc: MeshCore, contact: dict[str, Any], node_id: str) -> bool:
     """True = добавлен, False = TABLE_FULL или другая ошибка."""
     res = await mc.commands.add_contact(contact)
     if not res.is_error():
@@ -91,7 +91,7 @@ async def try_add_contact(mc: Any, contact: dict[str, Any], node_id: str) -> boo
     return False
 
 
-async def evict_oldest_contact_and_add(mc: Any, contact: dict[str, Any], node_id: str) -> bool:
+async def evict_oldest_contact_and_add(mc: MeshCore, contact: dict[str, Any], node_id: str) -> bool:
     """Удалить самый старый контакт (по last_advert) и добавить новый."""
     log.info("нода '%s': таблица контактов полна — удаляю самый старый", node_id)
     contacts_ev = await mc.commands.get_contacts()
@@ -115,7 +115,7 @@ async def evict_oldest_contact_and_add(mc: Any, contact: dict[str, Any], node_id
 
 
 async def ensure_contact(
-    mc: Any, *, name: str, pubkey: str, node_id: str, override_oldest_contact: bool
+    mc: MeshCore, *, name: str, pubkey: str, node_id: str, override_oldest_contact: bool
 ) -> None:
     pubkey_bytes = bytes.fromhex(pubkey)[:32]
     check = await mc.commands.get_contact_by_key(pubkey_bytes)
@@ -146,7 +146,7 @@ async def ensure_contact(
 
 
 async def login_room_server(
-    mc: Any, *, name: str, pubkey: str, password: str | None, node_id: str
+    mc: MeshCore, *, name: str, pubkey: str, password: str | None, node_id: str
 ) -> None:
     # send_login_sync сам шлёт login и ждёт LOGIN_SUCCESS (плюс держит mesh-lock).
     # min_timeout=15 — нижняя граница ожидания (раньше было max(suggested, 15)).
@@ -158,7 +158,10 @@ async def login_room_server(
         nonlocal login_failed
         login_failed = True
 
-    sub = mc.commands.dispatcher.subscribe(McEventType.LOGIN_FAILED, on_login_failed)
+    dispatcher = mc.commands.dispatcher
+    if dispatcher is None:
+        raise RuntimeError(f"нода '{node_id}': dispatcher недоступен — нельзя подписаться на LOGIN_FAILED")
+    sub = dispatcher.subscribe(McEventType.LOGIN_FAILED, on_login_failed)
     try:
         login_event = await mc.commands.send_login_sync(  # verify
             pubkey, password or "", min_timeout=15.0
@@ -173,10 +176,10 @@ async def login_room_server(
                 node_id, name,
             )
     finally:
-        sub.unsubscribe()
+        sub.unsubscribe()  # type: ignore[no-untyped-call]  # у метода либы нет аннотаций
 
 
-async def send_room_server(mc: Any, pubkey: str, text: str) -> Any:
+async def send_room_server(mc: MeshCore, pubkey: str, text: str) -> Any:
     return await mc.commands.send_msg_with_retry(pubkey, text)  # verify
 
 
