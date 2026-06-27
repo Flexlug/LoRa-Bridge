@@ -15,6 +15,7 @@ from lora_bridge.config.schema import (
 
 _POLICIES = {"egress_rate": {"msgs_per_window": 6, "window_seconds": 60}}
 _TCP = {"type": "tcp", "host": "h", "port": 1}
+_PSK = "00112233445566778899aabbccddeeff"  # валидный PSK: 32 hex-символа = 16 байт
 
 
 def _node(connection, endpoints=None):
@@ -74,7 +75,7 @@ def test_tcp_missing_port_rejected():
     "ep",
     [
         {"type": "public", "channel_name": "General"},
-        {"type": "private", "channel_name": "Ops", "secret": "my-psk"},
+        {"type": "private", "channel_name": "Ops", "secret": _PSK},
         {"type": "room_server", "pubkey": "abcdef123"},
         {"type": "room_server", "pubkey": "abcdef123", "password": "pw"},
     ],
@@ -111,6 +112,42 @@ def test_private_endpoint_missing_secret_rejected():
 def test_room_server_endpoint_missing_pubkey_rejected():
     with pytest.raises(ValidationError):
         MeshCoreNode.model_validate(_node(_TCP, {"ch": {"type": "room_server"}}))
+
+
+# ---------------------------------------------------------------------------
+# Endpoint — нормализация и валидаторы (LoRa-Bridge-305 / 3o9)
+# ---------------------------------------------------------------------------
+
+
+def test_room_server_pubkey_lowercased():
+    # Либа отдаёт pubkey_prefix в нижнем регистре, сравнение регистрозависимое:
+    # заглавный pubkey из конфига должен нормализоваться, иначе тихий дроп RX.
+    node = MeshCoreNode.model_validate(
+        _node(_TCP, {"ch": {"type": "room_server", "pubkey": "ABCDEF123456"}})
+    )
+    assert node.endpoints["ch"].pubkey == "abcdef123456"
+
+
+def test_private_endpoint_valid_secret_accepted():
+    node = MeshCoreNode.model_validate(
+        _node(_TCP, {"ch": {"type": "private", "channel_name": "Ops", "secret": _PSK}})
+    )
+    assert node.endpoints["ch"].secret == _PSK
+
+
+@pytest.mark.parametrize(
+    "secret",
+    [
+        "00112233445566778899aabbccddee",    # 30 символов — короткий
+        "00112233445566778899aabbccddeeff00",  # 34 символа — длинный
+        "00112233445566778899aabbccddeezz",  # 32 символа, но не hex
+    ],
+)
+def test_private_endpoint_invalid_secret_rejected(secret):
+    with pytest.raises(ValidationError):
+        MeshCoreNode.model_validate(
+            _node(_TCP, {"ch": {"type": "private", "channel_name": "Ops", "secret": secret}})
+        )
 
 
 # ---------------------------------------------------------------------------
