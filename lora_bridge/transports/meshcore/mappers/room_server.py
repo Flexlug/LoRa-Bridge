@@ -15,7 +15,7 @@ from typing import Any, Awaitable, Callable, ClassVar
 
 from meshcore import EventType as McEventType, MeshCore
 
-from .handler import EV_CONTACT_MSG, EndpointHandler, ResolveContext
+from .handler import AuthorResolver, EV_CONTACT_MSG, EndpointHandler, ResolveContext
 from ....domain.models import (
     ChannelRef,
     Identity,
@@ -46,11 +46,13 @@ class RoomServerHandler(EndpointHandler):
     async def send(self, mc: MeshCore, text: str, node_id: str) -> Any:
         return await send_room_server(mc, self.pubkey, text)
 
-    def try_rx(self, payload: dict[str, Any], node_id: str) -> Message | None:
+    def try_rx(
+        self, payload: dict[str, Any], node_id: str, resolve_author: AuthorResolver
+    ) -> Message | None:
         # 6-байтовый prefix pubkey идентифицирует room server в CONTACT_MSG_RECV
         if payload.get("pubkey_prefix", "") != self.pubkey[:12]:  # verify: prefix vs full pubkey
             return None
-        return room_server_to_message(payload, self.name, node_id)
+        return room_server_to_message(payload, self.name, node_id, resolve_author)
 
     def rx_key(self) -> str:
         return f"pubkey_prefix={self.pubkey[:12]}"
@@ -183,12 +185,26 @@ async def send_room_server(mc: MeshCore, pubkey: str, text: str) -> Any:
     return await mc.commands.send_msg_with_retry(pubkey, text)  # verify
 
 
-def room_server_to_message(payload: dict[str, Any], endpoint: str, node_id: str) -> Message:
-    pubkey = payload.get("pubkey_prefix", "")
+def room_server_to_message(
+    payload: dict[str, Any],
+    endpoint: str,
+    node_id: str,
+    resolve_author: AuthorResolver | None = None,
+) -> Message:
+    """Нормализовать room-server RX в доменный ``Message``.
+
+    Автор поста едет НЕ в тексте (как у каналов), а полем ``signature`` —
+    4-байтовым префиксом публичного ключа автора (подтверждено пейлоадом:
+    ``txt_type=2``, ``signature`` присутствует, ``text`` чистый). ``pubkey_prefix``
+    — это ключ КОМНАТЫ, не автора. Имя резолвим через ``resolve_author`` (lookup по
+    таблице контактов устройства); если автор там неизвестен — fallback на hex.
+    """
+    author_prefix = payload.get("signature", "")
+    name = resolve_author(author_prefix) if (resolve_author and author_prefix) else None
     text = payload.get("text", "")
     return Message(
         id=f"{endpoint}:{payload.get('sender_timestamp', 0)}",
         source=ChannelRef(node_id, endpoint),
-        sender=Identity(display_name=pubkey, transport_uid=LORA_SENDER_UID),
+        sender=Identity(display_name=name or author_prefix, transport_uid=LORA_SENDER_UID),
         text=text,
     )

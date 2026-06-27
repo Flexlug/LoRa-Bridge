@@ -154,13 +154,27 @@ async def send_channel(mc: MeshCore, channel_index: int | None, text: str, node_
     return await mc.commands.send_chan_msg(channel_index, text)
 
 
+def split_author(text: str) -> tuple[str, str]:
+    """Разделить ``"Имя: текст"`` → ``(имя, текст)`` по ПЕРВОМУ ``": "``.
+
+    Канальный кадр не несёт поля отправителя — MeshCore встраивает автора в тело
+    как ``"Имя: текст"`` (так шлёт companion-приложение). Если ``": "`` нет или
+    левая часть пуста — автор неизвестен: ``("", text)`` (текст не трогаем).
+    """
+    name, sep, body = text.partition(": ")
+    if sep and name:
+        return name, body
+    return "", text
+
+
 def channel_to_message(payload: dict[str, Any], endpoint: str, node_id: str) -> Message:
     ts = payload.get("sender_timestamp", 0)
-    text = payload.get("text", "")
-    # CHANNEL_MSG_RECV не несёт имени отправителя — callsign уже в тексте
+    raw = payload.get("text", "")
+    # автора несёт сам текст ("Имя: текст") — выносим в display_name, тело чистим
+    name, text = split_author(raw)
     return Message(
-        id=f"{endpoint}:{ts}:{hash(text)}",
+        id=f"{endpoint}:{ts}:{hash(raw)}",  # id по сырому тексту — стабильный идентификатор кадра
         source=ChannelRef(node_id, endpoint),
-        sender=Identity(display_name="", transport_uid=LORA_SENDER_UID),
+        sender=Identity(display_name=name, transport_uid=LORA_SENDER_UID),
         text=text,
     )

@@ -41,6 +41,19 @@ def build_lora_text(msg: Message, writable_messenger_count: int, tag: str, fmt: 
     return label + msg.text  # ТЕКСТ не трогаем; байты считает вызывающий
 
 
+def relay_lora_text(msg: Message) -> str:
+    """Wire-текст для LoRa→LoRa relay: восстановить автора как ``[ник] текст``.
+
+    Входящий канальный ``Message`` несёт автора в ``display_name`` (тело уже
+    очищено, см. ``channel_util.split_author``), а relay форвардит голый текст —
+    без этого автор потерялся бы. Скобочный формат (как у ``build_lora_text``), а
+    не ``"ник: текст"``: тогда обратный ``split_author`` его не распарсит и
+    loop-guard эха не сломается. Имя неизвестно → текст как есть.
+    """
+    name = msg.sender.display_name
+    return f"[{name}] {msg.text}" if name else msg.text
+
+
 def oversize_bytes(text: str, max_text_bytes: int) -> int:
     """На сколько байт строка превышает лимит (>0 → REJECTED(TOO_LONG), §6)."""
     return utf8_len(text) - max_text_bytes

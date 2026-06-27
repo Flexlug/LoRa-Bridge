@@ -91,6 +91,11 @@ class MeshCoreTransport(Transport):
             self._signal_disconnect()
             return
         await connection.set_time(self._mc)  # R6
+        # Кэш контактов фреймворка нужен для резолва имени автора room-server постов
+        # (_resolve_author -> get_contact_by_key_prefix). auto_update держит его свежим
+        # по contact-change событиям; ensure_contacts — первичная загрузка после connect.
+        self._mc.auto_update_contacts = True
+        await self._mc.ensure_contacts()  # первичная загрузка кэша контактов
         ctx = ResolveContext(
             mc=self._mc,
             node_id=self.id,
@@ -200,9 +205,17 @@ class MeshCoreTransport(Transport):
         if event.type == EV_DISCONNECTED:
             self._signal_disconnect()
             return
-        msg = route_rx(self._endpoints.values(), event, self.id)
+        msg = route_rx(self._endpoints.values(), event, self.id, self._resolve_author)
         if msg is not None:
             await self._hub.publish(msg)
+
+    def _resolve_author(self, pubkey_prefix: str) -> str | None:
+        """Префикс ключа автора -> adv_name по кэшу контактов фреймворка (или None)."""
+        mc = self._mc
+        if mc is None:
+            return None
+        contact = mc.get_contact_by_key_prefix(pubkey_prefix)
+        return contact.get("adv_name") if contact else None
 
     async def report_status(
         self,

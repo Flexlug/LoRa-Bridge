@@ -18,6 +18,7 @@ from lora_bridge.domain.models import (
     ChannelRef,
     DeliveryStatus,
     Identity,
+    LORA_SENDER_UID,
     LabelFormat,
     Message,
     RateSpec,
@@ -125,15 +126,21 @@ async def test_lora_to_lora_relay():
     room = RoomRoute(members=(LoraMember("n1", "general"), LoraMember("n2", "relay")))
     bridge, nodes, _ = await _build([room], {"n1": a, "n2": b}, {})
 
-    # сообщение пришло на A → должно уйти на B как есть (без ре-префикса)
-    src = _msg("n1", "general", "[Bob] из сети A")
+    # relay восстанавливает автора из display_name в скобочный формат [ник] текст
+    # (echo-safe: без ": ", не парсится обратно как автор)
+    src = Message(
+        id="m1",
+        source=ChannelRef("n1", "general"),
+        sender=Identity(display_name="Bob", transport_uid=LORA_SENDER_UID),
+        text="из сети A",
+    )
     await bridge.route_from_lora(src)
 
     await nodes["n2"].queue.close_input()
     await bridge.build_worker(nodes["n2"]).run()
 
     assert len(b.sent) == 1
-    assert b.sent[0][1].text == "[Bob] из сети A"  # форвард как есть (§12.1)
+    assert b.sent[0][1].text == "[Bob] из сети A"  # автор восстановлен из display_name
     assert a.sent == []  # обратно на A не уходит
 
 

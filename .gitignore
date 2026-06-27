@@ -28,6 +28,8 @@ uv.lock
 # реальный конфиг с секретами; в репо — только config.example.yaml
 config.yaml
 config.local.yaml
+config.room.yaml
+config.channel.yaml
 .env
 *.env
 
