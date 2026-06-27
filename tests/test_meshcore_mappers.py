@@ -1,6 +1,6 @@
 """Характеризационные тесты для чистых функций, вынесенных из transport.py при
 разбиении монолита MeshCore-адаптера: классификация ответа устройства (result.py)
-и нормализация RX-событий в доменный ``Message`` (mappers/channel, mappers/room_server).
+и нормализация RX-событий в доменный ``Message`` (mappers/channel_util, mappers/room_server).
 
 Цель — зафиксировать поведение ровно таким, каким оно было до разбиения: тесты
 закрепляют контракт §5.1/AD-5 (busy vs failed) и формат id/sender для RX.
@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from lora_bridge.domain.models import LORA_SENDER_UID
-from lora_bridge.transports.meshcore.mappers.channel import channel_to_message
+from lora_bridge.transports.meshcore.mappers.channel_util import channel_to_message
 from lora_bridge.transports.meshcore.mappers.room_server import room_server_to_message
 from lora_bridge.transports.meshcore.result import classify
 

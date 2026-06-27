@@ -1,47 +1,62 @@
 """Мапперы MeshCore-эндпоинтов по типам (§5.1, AD-5).
 
-Каждый тип эндпоинта (public/private канал, room server) живёт в своём модуле:
-там его состояние (state), резолв на устройстве, отправка и нормализация RX в
-доменный ``Message``. Здесь — общий union состояний и фабрика из конфига.
-Транспорт держит тонкую ``match``-диспетчеризацию поверх этих мапперов.
+Каждый тип эндпоинта живёт в своём модуле с единственной точкой входа —
+хэндлером (``public``/``private``/``room_server``); общая логика каналов — в
+``channel_util``. Здесь — фабрика из конфига, единственное место с ``match`` по
+типу: дальше транспорт работает с ``EndpointHandler`` не зная конкретного типа.
 """
 
 from __future__ import annotations
 
-from typing import assert_never
+from typing import Iterable, assert_never
 
 from ....config.schema import (
+    Endpoint,
     PrivateEndpoint,
     PublicEndpoint,
     RoomServerEndpoint,
 )
-from . import channel, room_server
-from .channel import PrivateEndpointState, PublicEndpointState
-from .room_server import RoomServerEndpointState
+from .handler import EndpointHandler, ResolveContext, route_rx
+from .private import PrivateChannelHandler
+from .public import PublicChannelHandler
+from .room_server import RoomServerHandler
 
-EndpointState = PublicEndpointState | PrivateEndpointState | RoomServerEndpointState
 
-
-def init_endpoint_state(
-    name: str, ep: PublicEndpoint | PrivateEndpoint | RoomServerEndpoint
-) -> EndpointState:
+def init_endpoint_handler(name: str, ep: Endpoint) -> EndpointHandler:
+    """Config-эндпоинт → хэндлер. Единственный ``match`` по типу во всём пакете."""
     match ep:
         case PublicEndpoint():
-            return PublicEndpointState(name=name, channel_name=ep.channel_name)
+            return PublicChannelHandler(name=name, channel_name=ep.channel_name)
         case PrivateEndpoint():
-            return PrivateEndpointState(name=name, channel_name=ep.channel_name, secret=ep.secret)
+            return PrivateChannelHandler(
+                name=name, channel_name=ep.channel_name, secret=ep.secret
+            )
         case RoomServerEndpoint():
-            return RoomServerEndpointState(name=name, pubkey=ep.pubkey, password=ep.password)
+            return RoomServerHandler(name=name, pubkey=ep.pubkey, password=ep.password)
         case _ as unreachable:
             assert_never(unreachable)
 
 
+def collect_channel_names(handlers: Iterable[EndpointHandler]) -> frozenset[str]:
+    """Имена всех channel-эндпоинтов узла (для вытеснения чужих слотов).
+
+    Знание о том, какие хэндлеры — каналы, держится здесь, рядом с фабрикой,
+    чтобы транспорт оставался type-agnostic.
+    """
+    return frozenset(
+        h.channel_name
+        for h in handlers
+        if isinstance(h, (PublicChannelHandler, PrivateChannelHandler))
+    )
+
+
 __all__ = [
-    "EndpointState",
-    "PublicEndpointState",
-    "PrivateEndpointState",
-    "RoomServerEndpointState",
-    "channel",
-    "room_server",
-    "init_endpoint_state",
+    "EndpointHandler",
+    "ResolveContext",
+    "PublicChannelHandler",
+    "PrivateChannelHandler",
+    "RoomServerHandler",
+    "init_endpoint_handler",
+    "collect_channel_names",
+    "route_rx",
 ]

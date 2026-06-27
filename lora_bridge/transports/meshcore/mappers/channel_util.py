@@ -1,17 +1,21 @@
-"""Мапер channel-эндпоинтов MeshCore (public / private).
+"""Общие функции channel-эндпоинтов MeshCore (public и private).
 
-Commit = MSG_OK (flood, без реальной доставки). Специфика типа: слот-индекс канала
-на устройстве, деривация PSK (public → sha256(name)[:16] внутри meshcore;
-private → raw hex PSK из приложения), запись канала в свободный слот.
-RX-событие — CHANNEL_MSG_RECV (имя отправителя не несёт, callsign уже в тексте).
+Здесь живёт только логика, одинаковая для обоих типов каналов: резолв слота на
+устройстве, запись канала в слот, отправка и нормализация RX в доменный
+``Message``. Различие public/private сводится к одному параметру ``secret_bytes``
+(``None`` → PSK = sha256(name)[:16] внутри meshcore; иначе — raw hex PSK), который
+передаёт конкретный хэндлер. SRP: типы каналов — в ``public``/``private``.
+
+Commit = MSG_OK (flood, без реальной доставки). RX-событие — CHANNEL_MSG_RECV
+(имя отправителя не несёт, callsign уже в тексте). Точные вызовы ``meshcore_py``
+помечены ``# verify``.
 """
 
 from __future__ import annotations
 
 import hashlib
 import logging
-from dataclasses import dataclass
-from typing import Any, assert_never
+from typing import Any
 
 from ....domain.models import (
     ChannelRef,
@@ -23,47 +27,19 @@ from ....domain.models import (
 log = logging.getLogger(__name__)
 
 
-@dataclass
-class PublicEndpointState:
-    name: str
-    channel_name: str
-    channel_index: int | None = None  # резолвится в start()
-
-
-@dataclass
-class PrivateEndpointState:
-    name: str
-    channel_name: str
-    secret: str
-    channel_index: int | None = None  # резолвится в start()
-
-
-ChannelEndpointState = PublicEndpointState | PrivateEndpointState
-
-
-def channel_secret_bytes(ep: ChannelEndpointState) -> bytes | None:
-    match ep:
-        case PublicEndpointState():
-            return None  # PSK = sha256(name)[:16] внутри meshcore
-        case PrivateEndpointState():
-            return bytes.fromhex(ep.secret)  # секрет — raw hex PSK из MeshCore-приложения
-        case _ as unreachable:
-            assert_never(unreachable)
-
-
-def expected_channel_hash(ep: ChannelEndpointState) -> str:
-    secret = channel_secret_bytes(ep)
-    if secret is None:
-        secret = hashlib.sha256(ep.channel_name.encode()).digest()[:16]
-    return hashlib.sha256(secret).hexdigest()[:2]
+def expected_channel_hash(channel_name: str, secret_bytes: bytes | None) -> str:
+    if secret_bytes is None:
+        secret_bytes = hashlib.sha256(channel_name.encode()).digest()[:16]
+    return hashlib.sha256(secret_bytes).hexdigest()[:2]
 
 
 async def resolve_channel(
     mc: Any,
-    ep: ChannelEndpointState,
-    node_id: str,
     *,
-    configured_channel_names: set[str],
+    channel_name: str,
+    secret_bytes: bytes | None,
+    node_id: str,
+    configured_channel_names: frozenset[str],
     override_oldest: bool,
 ) -> int:
     """Найти канал на устройстве по имени.
@@ -76,7 +52,7 @@ async def resolve_channel(
         raise RuntimeError(f"нода '{node_id}': не удалось получить device info")
     max_channels = device_info.payload.get("max_channels", 8)
 
-    expected_hash = expected_channel_hash(ep)
+    expected_hash = expected_channel_hash(channel_name, secret_bytes)
 
     found: list[str] = []
     first_empty: int | None = None
@@ -91,13 +67,13 @@ async def resolve_channel(
         found.append(name)
         if name:
             log.debug("нода '%s': слот %d: '%s' chan_hash=%s", node_id, idx, name, ch_hash)
-        if name == ep.channel_name:
+        if name == channel_name:
             if ch_hash == expected_hash:
-                log.debug("нода '%s': канал '%s' → слот %d (chan_hash=%s)", node_id, ep.channel_name, idx, ch_hash)
+                log.debug("нода '%s': канал '%s' → слот %d (chan_hash=%s)", node_id, channel_name, idx, ch_hash)
                 return idx
             log.warning(
                 "нода '%s': канал '%s' в слоте %d имеет chan_hash=%s, ожидается %s — перезапишу",
-                node_id, ep.channel_name, idx, ch_hash, expected_hash,
+                node_id, channel_name, idx, ch_hash, expected_hash,
             )
             psk_mismatch_idx = idx
         elif name == "":
@@ -107,7 +83,10 @@ async def resolve_channel(
             foreign_slots.append((idx, name))
 
     if psk_mismatch_idx is not None:
-        return await create_channel(mc, ep, psk_mismatch_idx, node_id)
+        return await create_channel(
+            mc, channel_name=channel_name, secret_bytes=secret_bytes,
+            slot=psk_mismatch_idx, node_id=node_id,
+        )
 
     non_empty = [n for n in found if n]
     log.debug("нода '%s': каналы на устройстве: %s", node_id, non_empty)
@@ -119,16 +98,24 @@ async def resolve_channel(
                 "нода '%s': нет свободных слотов — вытесняю слот %d ('%s')",
                 node_id, override_idx, override_name,
             )
-            return await create_channel(mc, ep, override_idx, node_id)
+            return await create_channel(
+                mc, channel_name=channel_name, secret_bytes=secret_bytes,
+                slot=override_idx, node_id=node_id,
+            )
         raise RuntimeError(
-            f"нода '{node_id}': канал '{ep.channel_name}' не найден "
+            f"нода '{node_id}': канал '{channel_name}' не найден "
             f"и нет свободных слотов. Каналы на устройстве: {non_empty}"
         )
 
-    return await create_channel(mc, ep, first_empty, node_id)
+    return await create_channel(
+        mc, channel_name=channel_name, secret_bytes=secret_bytes,
+        slot=first_empty, node_id=node_id,
+    )
 
 
-async def create_channel(mc: Any, ep: ChannelEndpointState, slot: int, node_id: str) -> int:
+async def create_channel(
+    mc: Any, *, channel_name: str, secret_bytes: bytes | None, slot: int, node_id: str
+) -> int:
     """Записать канал в пустой слот через set_channel.
 
     Запись идёт во flash MCU — устройство может на несколько секунд
@@ -136,34 +123,29 @@ async def create_channel(mc: Any, ep: ChannelEndpointState, slot: int, node_id: 
     Это нормальное поведение: реконнект-цикл подхватит его автоматически,
     после чего канал будет найден и бот продолжит работу.
     """
-    secret_bytes = channel_secret_bytes(ep)
-
     log.warning(
         "нода '%s': канал '%s' не найден — записываю в слот %d. "
         "Устройство может перезапуститься, бот переподключится автоматически.",
-        node_id, ep.channel_name, slot,
+        node_id, channel_name, slot,
     )
     log.debug(
         "нода '%s': вызов set_channel(slot=%d, name=%r, secret=%s)",
-        node_id, slot, ep.channel_name,
+        node_id, slot, channel_name,
         "auto" if secret_bytes is None else secret_bytes.hex(),
     )
-    res = await mc.commands.set_channel(slot, ep.channel_name, secret_bytes)  # verify
+    res = await mc.commands.set_channel(slot, channel_name, secret_bytes)  # verify
     log.debug("нода '%s': ответ set_channel: type=%s payload=%s", node_id, res.type, res.payload)
     if res.is_error():
         raise RuntimeError(
-            f"нода '{node_id}': не удалось записать канал '{ep.channel_name}': {res.payload}"
+            f"нода '{node_id}': не удалось записать канал '{channel_name}': {res.payload}"
         )
-    log.info("нода '%s': канал '%s' записан в слот %d", node_id, ep.channel_name, slot)
+    log.info("нода '%s': канал '%s' записан в слот %d", node_id, channel_name, slot)
     return slot
 
 
-async def send_channel(mc: Any, ep: ChannelEndpointState, text: str, node_id: str) -> Any:
-    log.debug(
-        "нода '%s': send_chan_msg слот=%s текст=%r",
-        node_id, ep.channel_index, text,
-    )
-    return await mc.commands.send_chan_msg(ep.channel_index, text)
+async def send_channel(mc: Any, channel_index: int | None, text: str, node_id: str) -> Any:
+    log.debug("нода '%s': send_chan_msg слот=%s текст=%r", node_id, channel_index, text)
+    return await mc.commands.send_chan_msg(channel_index, text)
 
 
 def channel_to_message(payload: dict[str, Any], endpoint: str, node_id: str) -> Message:
