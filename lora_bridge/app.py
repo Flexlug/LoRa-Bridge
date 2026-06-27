@@ -80,8 +80,9 @@ def main() -> None:
     settings = Settings.from_env()
     logging.basicConfig(
         level=settings.log_level,
-        format="%(asctime)s %(levelname)s:%(name)s:%(message)s",
+        format="%(asctime)s.%(msecs)03d %(levelname)s:%(name)s:%(message)s",
         datefmt="%H:%M:%S",
+        force=True,
     )
     logging.getLogger().setLevel(settings.log_level)  # override если basicConfig не сработал
     try:
