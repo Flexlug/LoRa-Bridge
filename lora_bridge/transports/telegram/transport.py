@@ -17,7 +17,7 @@ from typing import AsyncIterator, Optional, TYPE_CHECKING
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.types import Message as TgMessage
 
-from .commands import build_command_router
+from .commands import build_command_router, command_menu
 from .reactions import ReactionFeedback
 from ..hub import Hub
 from ...domain.ports import Transport
@@ -79,6 +79,7 @@ class TelegramTransport(Transport):
     async def start(self) -> None:
         me = await self._bot.get_me()  # verify: бот доступен (sanity)
         log.info("Telegram-транспорт '%s': бот @%s (id=%d) подключён", self.id, me.username, me.id)
+        await self._bot.set_my_commands(command_menu())  # verify: меню команд в Telegram
         self._poll_task = asyncio.create_task(
             self._dp.start_polling(self._bot, handle_signals=False)  # verify
         )
