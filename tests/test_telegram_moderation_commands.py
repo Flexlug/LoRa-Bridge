@@ -93,8 +93,8 @@ async def test_ban_bans_user(store: ModerationStore) -> None:
         store, SimpleNamespace(owner_id=1, alias_max_chars=16)
     )}
     msg = _msg("/ban 555", user_id=1)
-    mock_answer = AsyncMock()
-    with patch.object(type(msg), "answer", mock_answer):
+    mock_reply = AsyncMock()
+    with patch.object(type(msg), "reply", mock_reply):
         await cmds["ban"].handler(msg)
     assert await store.is_disabled(555) is True
 
@@ -105,8 +105,8 @@ async def test_unban_unbans_user(store: ModerationStore) -> None:
         store, SimpleNamespace(owner_id=1, alias_max_chars=16)
     )}
     msg = _msg("/unban 555", user_id=1)
-    mock_answer = AsyncMock()
-    with patch.object(type(msg), "answer", mock_answer):
+    mock_reply = AsyncMock()
+    with patch.object(type(msg), "reply", mock_reply):
         await cmds["unban"].handler(msg)
     assert await store.is_disabled(555) is False
 
@@ -116,13 +116,13 @@ async def test_set_alias_enforces_length(store: ModerationStore) -> None:
         store, SimpleNamespace(owner_id=1, alias_max_chars=5)
     )}
     msg = _msg("/set_alias TooLongAlias", user_id=10)
-    mock_answer = AsyncMock()
-    with patch.object(type(msg), "answer", mock_answer):
+    mock_reply = AsyncMock()
+    with patch.object(type(msg), "reply", mock_reply):
         await cmds["set_alias"].handler(msg)
     s = await store.get_user_settings(10)
     assert s.alias is None
-    mock_answer.assert_awaited_once()
-    assert "5" in mock_answer.await_args.args[0]
+    mock_reply.assert_awaited_once()
+    assert "5" in mock_reply.await_args.args[0]
 
 
 async def test_set_alias_sets_for_self(store: ModerationStore) -> None:
@@ -130,8 +130,8 @@ async def test_set_alias_sets_for_self(store: ModerationStore) -> None:
         store, SimpleNamespace(owner_id=1, alias_max_chars=16)
     )}
     msg = _msg("/set_alias Вася", user_id=10)
-    mock_answer = AsyncMock()
-    with patch.object(type(msg), "answer", mock_answer):
+    mock_reply = AsyncMock()
+    with patch.object(type(msg), "reply", mock_reply):
         await cmds["set_alias"].handler(msg)
     s = await store.get_user_settings(10)
     assert s.alias == "Вася"
