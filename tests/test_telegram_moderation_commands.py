@@ -52,40 +52,34 @@ def test_moderation_command_metas_complete() -> None:
     assert {"ban", "unban", "banlist", "set_alias", "set_transliter", "role", "audit"} == names
 
 
-def test_ban_requires_moderator_role() -> None:
+@pytest.mark.parametrize(
+    "command,min_role",
+    [
+        ("ban", Role.MODERATOR),
+        ("role", Role.ADMIN),
+    ],
+)
+def test_command_min_role(command: str, min_role: Role) -> None:
     specs = {s.name: s for s in make_moderation_commands(
         ModerationStore(":memory:"), SimpleNamespace(owner_id=1, alias_max_chars=16)
     )}
-    assert specs["ban"].min_role == Role.MODERATOR
+    assert specs[command].min_role == min_role
 
 
-def test_role_requires_admin_role() -> None:
-    specs = {s.name: s for s in make_moderation_commands(
-        ModerationStore(":memory:"), SimpleNamespace(owner_id=1, alias_max_chars=16)
-    )}
-    assert specs["role"].min_role == Role.ADMIN
-
-
-async def test_resolve_target_from_reply() -> None:
-    msg = _msg("/ban", reply_user_id=99)
-    result = await resolve_target(msg)
-    assert result is not None
-    assert result[0] == 99
-    assert result[1] == "Target"
-
-
-async def test_resolve_target_from_numeric_arg() -> None:
-    msg = _msg("/ban 12345")
-    result = await resolve_target(msg)
-    assert result is not None
-    assert result[0] == 12345
-    assert result[1] is None
-
-
-async def test_resolve_target_none_when_no_arg() -> None:
-    msg = _msg("/ban")
-    result = await resolve_target(msg)
-    assert result is None
+@pytest.mark.parametrize(
+    "text,reply_user_id,expected",
+    [
+        ("/ban", 99, (99, "Target")),    # цель из reply: id + имя
+        ("/ban 12345", None, (12345, None)),  # цель из числового аргумента, имени нет
+        ("/ban", None, None),            # ни reply, ни аргумента → цели нет
+    ],
+    ids=["from_reply", "from_numeric_arg", "none_when_no_arg"],
+)
+async def test_resolve_target(
+    text: str, reply_user_id: int | None, expected: tuple[int, str | None] | None
+) -> None:
+    result = await resolve_target(_msg(text, reply_user_id=reply_user_id))
+    assert result == expected
 
 
 async def test_ban_bans_user(store: ModerationStore) -> None:
