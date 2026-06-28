@@ -49,7 +49,7 @@ def _msg(text: str, user_id: int = 10, reply_user_id: int | None = None) -> Mess
 
 def test_moderation_command_metas_complete() -> None:
     names = {m.name for m in MODERATION_COMMAND_METAS}
-    assert {"ban", "unban", "banlist", "set-alias", "set-transliter", "role", "audit"} == names
+    assert {"ban", "unban", "banlist", "set_alias", "set_transliter", "role", "audit"} == names
 
 
 def test_ban_requires_moderator_role() -> None:
@@ -115,10 +115,10 @@ async def test_set_alias_enforces_length(store: ModerationStore) -> None:
     cmds = {s.name: s for s in make_moderation_commands(
         store, SimpleNamespace(owner_id=1, alias_max_chars=5)
     )}
-    msg = _msg("/set-alias TooLongAlias", user_id=10)
+    msg = _msg("/set_alias TooLongAlias", user_id=10)
     mock_answer = AsyncMock()
     with patch.object(type(msg), "answer", mock_answer):
-        await cmds["set-alias"].handler(msg)
+        await cmds["set_alias"].handler(msg)
     s = await store.get_user_settings(10)
     assert s.alias is None
     mock_answer.assert_awaited_once()
@@ -129,9 +129,9 @@ async def test_set_alias_sets_for_self(store: ModerationStore) -> None:
     cmds = {s.name: s for s in make_moderation_commands(
         store, SimpleNamespace(owner_id=1, alias_max_chars=16)
     )}
-    msg = _msg("/set-alias Вася", user_id=10)
+    msg = _msg("/set_alias Вася", user_id=10)
     mock_answer = AsyncMock()
     with patch.object(type(msg), "answer", mock_answer):
-        await cmds["set-alias"].handler(msg)
+        await cmds["set_alias"].handler(msg)
     s = await store.get_user_settings(10)
     assert s.alias == "Вася"

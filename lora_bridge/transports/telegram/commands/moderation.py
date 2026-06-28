@@ -21,8 +21,8 @@ if TYPE_CHECKING:
 
 # Статические метаданные без хендлеров — для документации и /help.
 MODERATION_COMMAND_METAS: list[CommandMeta] = [
-    CommandMeta("set-alias",     "задать себе alias (или другому — для мод+)",  Role.USER),
-    CommandMeta("set-transliter", "включить/выключить транслитерацию",          Role.USER),
+    CommandMeta("set_alias",     "задать себе alias (или другому — для мод+)",  Role.USER),
+    CommandMeta("set_transliter", "включить/выключить транслитерацию",          Role.USER),
     CommandMeta("ban",           "запретить пользователю бриджинг TG→LoRa",    Role.MODERATOR),
     CommandMeta("unban",         "снять бан",                                   Role.MODERATOR),
     CommandMeta("banlist",       "список забаненных пользователей",             Role.MODERATOR),
@@ -289,8 +289,8 @@ def make_moderation_commands(
         await message.answer(text, parse_mode="HTML", reply_markup=kb)
 
     return [
-        CommandSpec("set-alias",     "задать себе alias (или другому — для мод+)",  Role.USER,      set_alias),
-        CommandSpec("set-transliter", "включить/выключить транслитерацию",          Role.USER,      set_transliter),
+        CommandSpec("set_alias",     "задать себе alias (или другому — для мод+)",  Role.USER,      set_alias),
+        CommandSpec("set_transliter", "включить/выключить транслитерацию",          Role.USER,      set_transliter),
         CommandSpec("ban",           "запретить пользователю бриджинг TG→LoRa",    Role.MODERATOR, ban),
         CommandSpec("unban",         "снять бан",                                   Role.MODERATOR, unban),
         CommandSpec("banlist",       "список забаненных пользователей",             Role.MODERATOR, banlist),
