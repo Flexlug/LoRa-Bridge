@@ -9,6 +9,7 @@ LoRa-путь (источник — нода): dedup + loop-guard → мирро
 
 from __future__ import annotations
 
+import functools
 import logging
 from typing import Optional, assert_never
 from dataclasses import dataclass, replace
@@ -88,13 +89,13 @@ class Bridge:
 
         supervisor = Supervisor()
         for transport in all_transports:
-            supervisor.register(f"consume:{transport.id}", lambda t=transport: self.consume(t))
+            supervisor.register(f"consume:{transport.id}", functools.partial(self.consume, transport))
             supervisor.register(f"reconnect:{transport.id}", transport.run)
         for node_id, node in self._nodes.items():
             supervisor.register(f"egress:{node_id}", self.build_worker(node).run)
             supervisor.register(
                 f"notifier:{node_id}",
-                lambda n=node: n.notifier.run_flush_loop(_NOTIFIER_FLUSH_INTERVAL),
+                functools.partial(node.notifier.run_flush_loop, _NOTIFIER_FLUSH_INTERVAL),
             )
 
         try:

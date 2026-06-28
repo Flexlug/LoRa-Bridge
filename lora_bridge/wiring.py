@@ -22,7 +22,7 @@ from .core.notifier import DropNotifier, NotifySink
 from .core.dedup import TtlDedup
 from .core.loopguard import LoopGuard
 from .core.queue import CommitQueue
-from .core.routing import LoraMember, MessengerMember, RoomRegistry, RoomRoute
+from .core.routing import LoraMember, Member, MessengerMember, RoomRegistry, RoomRoute
 from .domain.models import ChannelRef, Identity, LabelFormat, Message, RateSpec
 from .domain.ports import Transport
 from .transports.meshcore.transport import MeshCoreTransport
@@ -91,7 +91,7 @@ def build_rooms(config: AppConfig) -> RoomRegistry:
             room.lora.endpoint,
             len(room.subscribers),
         )
-        members: list = [LoraMember(room.lora.node, room.lora.endpoint)]
+        members: list[Member] = [LoraMember(room.lora.node, room.lora.endpoint)]
         for sub in room.subscribers:
             match sub:
                 case LoraSubscriber():

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import Optional, Protocol
+from typing import Callable, Optional, Protocol
 
 import aiosqlite
 
@@ -56,7 +56,7 @@ class OutboundJournal(Protocol):
 class SqliteJournal:
     """SQLite-реализация ``OutboundJournal`` (aiosqlite)."""
 
-    def __init__(self, db_path: str, *, _clock=time.monotonic) -> None:
+    def __init__(self, db_path: str, *, _clock: Callable[[], float] = time.monotonic) -> None:
         self._db_path = db_path
         self._clock = _clock
         self._db: Optional[aiosqlite.Connection] = None

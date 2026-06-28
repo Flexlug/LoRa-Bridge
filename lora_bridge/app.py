@@ -11,7 +11,7 @@ from pydantic import ValidationError
 
 from .config.errors import format_validation_error
 from .config.schema import AppConfig
-from .core.bridge import Bridge
+from .core.bridge import Bridge, NodeRuntime
 from .core.journal import SqliteJournal
 from .core.queue import QueueItem
 from .core.status import StatusDispatcher
@@ -25,7 +25,7 @@ NOTICE_SENDER = Identity(display_name="bridge", transport_uid=BRIDGE_TRANSPORT_U
 
 
 async def recover(
-    journal: SqliteJournal, nodes, status: StatusDispatcher, messenger_ids: set[str]
+    journal: SqliteJournal, nodes: dict[str, NodeRuntime], status: StatusDispatcher, messenger_ids: set[str]
 ) -> None:
     """Починка сирот после рестарта (§11.1): TRANSMITTING→UNKNOWN, PENDING→re-enqueue."""
     for e in await journal.recover():

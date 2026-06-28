@@ -42,7 +42,7 @@ class DropNotifier:
         window_seconds: float,
         sink: NotifySink,
         *,
-        _clock=time.monotonic,
+        _clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._window = window_seconds
         self._sink = sink
