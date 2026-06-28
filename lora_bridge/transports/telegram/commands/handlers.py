@@ -25,7 +25,7 @@ BASIC_COMMAND_METAS: list[CommandMeta] = [
 
 
 async def _ping(message: TgMessage) -> None:
-    await message.answer("pong")
+    await message.reply("pong")
 
 
 def make_basic_commands(
@@ -39,7 +39,7 @@ def make_basic_commands(
         uid = message.from_user.id if message.from_user else 0
         role = await store.get_role(owner_id, uid)
         visible = [m for m in all_metas if m.min_role <= role]
-        await message.answer(render_help(visible, role), parse_mode="HTML")
+        await message.reply(render_help(visible, role), parse_mode="HTML")
 
     return [
         CommandSpec("ping", "проверка живости бота", Role.USER, _ping),

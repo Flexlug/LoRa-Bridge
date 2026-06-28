@@ -110,7 +110,7 @@ def make_moderation_commands(
     async def ban(message: TgMessage) -> None:
         target = await resolve_target(message)
         if target is None:
-            await message.answer(
+            await message.reply(
                 "Укажите цель: ответьте на сообщение или передайте числовой ID."
             )
             return
@@ -123,14 +123,14 @@ def make_moderation_commands(
             ts=int(time.time()), actor_id=actor_id, actor_name=actor_name,
             action="ban", target_id=tg_id, target_name=display_name,
         )
-        await message.answer(
+        await message.reply(
             f"Пользователь {_mention(tg_id, display_name)} забанен.", parse_mode="HTML"
         )
 
     async def unban(message: TgMessage) -> None:
         target = await resolve_target(message)
         if target is None:
-            await message.answer(
+            await message.reply(
                 "Укажите цель: ответьте на сообщение или передайте числовой ID."
             )
             return
@@ -143,19 +143,19 @@ def make_moderation_commands(
             ts=int(time.time()), actor_id=actor_id, actor_name=actor_name,
             action="unban", target_id=tg_id, target_name=display_name,
         )
-        await message.answer(f"Бан снят: {_mention(tg_id, display_name)}.", parse_mode="HTML")
+        await message.reply(f"Бан снят: {_mention(tg_id, display_name)}.", parse_mode="HTML")
 
     async def banlist(message: TgMessage) -> None:
         bans = await store.get_banned_users()
         if not bans:
-            await message.answer("Список банов пуст.")
+            await message.reply("Список банов пуст.")
             return
         lines = []
         for tg_id, banned_name, alias in bans:
             mention = _mention(tg_id, banned_name)
             suffix = f" (alias: {html.escape(alias)})" if alias else ""
             lines.append(f"• {mention}{suffix}")
-        await message.answer(
+        await message.reply(
             "Забаненные пользователи:\n" + "\n".join(lines), parse_mode="HTML"
         )
 
@@ -197,13 +197,13 @@ def make_moderation_commands(
         if target_id != actor_id:
             role = await store.get_role(owner_id, actor_id)
             if role < Role.MODERATOR:
-                await message.answer(
+                await message.reply(
                     "Недостаточно прав для изменения alias другому пользователю."
                 )
                 return
 
         if new_alias and len(new_alias) > alias_max:
-            await message.answer(f"Alias слишком длинный: максимум {alias_max} символов.")
+            await message.reply(f"Alias слишком длинный: максимум {alias_max} символов.")
             return
 
         await store.set_alias(target_id, new_alias)
@@ -214,9 +214,9 @@ def make_moderation_commands(
             action="set_alias", target_id=target_id, target_name=target_name, detail=detail,
         )
         if new_alias:
-            await message.answer(f"Alias установлен: {html.escape(new_alias)}")
+            await message.reply(f"Alias установлен: {html.escape(new_alias)}")
         else:
-            await message.answer("Alias сброшен.")
+            await message.reply("Alias сброшен.")
 
     async def set_transliter(message: TgMessage) -> None:
         text = message.text or ""
@@ -233,28 +233,28 @@ def make_moderation_commands(
                 if target_id != actor_id:
                     role = await store.get_role(owner_id, actor_id)
                     if role < Role.MODERATOR:
-                        await message.answer("Недостаточно прав.")
+                        await message.reply("Недостаточно прав.")
                         return
 
         new_val = await store.toggle_transliter(target_id)
         state = "включена" if new_val else "выключена"
-        await message.answer(f"Транслитерация {state}.")
+        await message.reply(f"Транслитерация {state}.")
 
     async def role_cmd(message: TgMessage) -> None:
         text = message.text or ""
         parts = text.split()
         if len(parts) < 4:
-            await message.answer("Использование: /role grant|revoke admin|moderator <id>")
+            await message.reply("Использование: /role grant|revoke admin|moderator <id>")
             return
         action_str, role_str, target_arg = parts[1], parts[2], parts[3]
         if action_str not in ("grant", "revoke"):
-            await message.answer("Действие должно быть grant или revoke.")
+            await message.reply("Действие должно быть grant или revoke.")
             return
         if role_str not in ("admin", "moderator"):
-            await message.answer("Роль должна быть admin или moderator.")
+            await message.reply("Роль должна быть admin или moderator.")
             return
         if not target_arg.lstrip("-").isdigit():
-            await message.answer("Укажите числовой Telegram ID.")
+            await message.reply("Укажите числовой Telegram ID.")
             return
         target_id = int(target_arg)
         actor = message.from_user
@@ -268,13 +268,13 @@ def make_moderation_commands(
         from ..moderation.roles import can_grant, can_revoke
         if action_str == "grant":
             if not can_grant(actor_role, target_role):
-                await message.answer("Недостаточно прав для выдачи этой роли.")
+                await message.reply("Недостаточно прав для выдачи этой роли.")
                 return
             await store.set_role(target_id, role_str, chat_id=message.chat.id)
         else:
             current_target_role = await store.get_role(owner_id, target_id)
             if not can_revoke(actor_role, current_target_role):
-                await message.answer("Недостаточно прав для отзыва этой роли.")
+                await message.reply("Недостаточно прав для отзыва этой роли.")
                 return
             await store.remove_role(target_id)
 
@@ -285,13 +285,13 @@ def make_moderation_commands(
         if on_role_changed is not None:
             await on_role_changed(target_id, message.chat.id)
         verb = "выдана" if action_str == "grant" else "отозвана"
-        await message.answer(
+        await message.reply(
             f"Роль {role_str} {verb} для {_mention(target_id, None)}.", parse_mode="HTML"
         )
 
     async def audit(message: TgMessage) -> None:
         text, kb = await _audit_text_and_kb(page=1, store=store)
-        await message.answer(text, parse_mode="HTML", reply_markup=kb)
+        await message.reply(text, parse_mode="HTML", reply_markup=kb)
 
     return [
         CommandSpec("set_alias",     "задать себе alias (или другому — для мод+)",  Role.USER,      set_alias),
