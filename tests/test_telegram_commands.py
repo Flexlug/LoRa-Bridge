@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock
 from aiogram.types import Chat, Message, Update, User
 
 from lora_bridge.transports.telegram.commands import ALL_COMMAND_METAS, command_menu, render_help
+from lora_bridge.transports.telegram.commands.framework import PRIVATE_ONLY_REPLY
 from lora_bridge.transports.telegram.moderation.roles import Role
 from lora_bridge.transports.telegram.moderation.store import ModerationStore
 from lora_bridge.transports.telegram.transport import TelegramTransport
@@ -42,21 +43,26 @@ async def _make_transport_with_commands() -> TelegramTransport:
     return transport
 
 
-def _update(text: str, user_id: int = 2) -> Update:
+def _update(text: str, user_id: int = 2, chat_type: str = "private", chat_id: int = 1) -> Update:
     return Update(
         update_id=1,
         message=Message(
             message_id=10,
             date=dt.datetime(2024, 1, 1),
-            chat=Chat(id=1, type="private"),
+            chat=Chat(id=chat_id, type=chat_type),
             from_user=User(id=user_id, is_bot=False, first_name="tester"),
             text=text,
         ),
     )
 
 
-async def _feed(transport: TelegramTransport, text: str, user_id: int = 2) -> None:
-    await transport._dp.feed_update(transport._bot, _update(text, user_id))
+async def _feed(
+    transport: TelegramTransport, text: str,
+    user_id: int = 2, chat_type: str = "private", chat_id: int = 1,
+) -> None:
+    await transport._dp.feed_update(
+        transport._bot, _update(text, user_id, chat_type, chat_id)
+    )
 
 
 async def test_known_command_does_not_publish() -> None:
@@ -113,6 +119,33 @@ def test_command_menu_filters_by_role() -> None:
     assert "ping" in user_names
     assert "ban" not in user_names
     assert "ban" in mod_names
+
+
+async def test_command_in_group_redirects_to_dm() -> None:
+    """Любая команда в группе — редирект в ЛС, не выполняется."""
+    transport = await _make_transport_with_commands()
+    await _feed(transport, "/ping", chat_type="supergroup", chat_id=-100123)
+    transport._hub.publish.assert_not_called()
+    sent = transport._bot.session.await_args.args[1]
+    assert PRIVATE_ONLY_REPLY in sent.text
+
+
+async def test_unknown_command_in_group_also_redirects() -> None:
+    transport = await _make_transport_with_commands()
+    await _feed(transport, "/unknown_cmd", chat_type="supergroup", chat_id=-100123)
+    transport._hub.publish.assert_not_called()
+    sent = transport._bot.session.await_args.args[1]
+    assert PRIVATE_ONLY_REPLY in sent.text
+
+
+def test_help_shows_role_when_passed() -> None:
+    text = render_help([], Role.MODERATOR)
+    assert "moderator" in text.lower()
+
+
+def test_help_no_role_header_when_omitted() -> None:
+    text = render_help([])
+    assert "роль" not in text.lower()
 
 
 async def test_start_registers_default_command_menu() -> None:

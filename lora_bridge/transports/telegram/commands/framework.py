@@ -43,6 +43,7 @@ _ANY_COMMAND = re.compile(r"[A-Za-z0-9_]+")
 
 UNKNOWN_COMMAND_REPLY = "Неизвестная команда."
 INSUFFICIENT_RIGHTS_REPLY = "Недостаточно прав."
+PRIVATE_ONLY_REPLY = "Команды работают только в личных сообщениях с ботом."
 
 CommandHandler = Callable[[TgMessage], Awaitable[None]]
 CallbackHandler = Callable[[CallbackQuery], Awaitable[None]]
@@ -73,10 +74,13 @@ class CallbackSpec:
     min_role: "Role"
 
 
-def render_help(commands: list[CommandMeta]) -> str:
+def render_help(commands: list[CommandMeta], role: "Role | None" = None) -> str:
     """Текст ``/help`` из переданного (уже отфильтрованного) реестра."""
     lines = [f"/{spec.name} — {spec.description}" for spec in commands]
-    return "Доступные команды:\n" + "\n".join(lines)
+    header = "Доступные команды:"
+    if role is not None:
+        header = f"Ваша роль: <b>{role.name.lower()}</b>\n\n" + header
+    return header + "\n" + "\n".join(lines)
 
 
 def command_menu(commands: list[CommandMeta], role: "Role") -> list[BotCommand]:
@@ -91,9 +95,23 @@ def build_command_router(
     store: "ModerationStore | None" = None,
     owner_id: int = 0,
     callbacks: list[CallbackSpec] | None = None,
+    *,
+    private_only: bool = False,
 ) -> Router:
-    """Роутер транспорт-локальных команд. Включать ДО bridge-хэндлера ``on_message``."""
+    """Роутер транспорт-локальных команд. Включать ДО bridge-хэндлера ``on_message``.
+
+    ``private_only=True`` — любая команда в групповом чате получает редирект в ЛС;
+    подсказки команд в группах при этом скрываются через ``set_my_commands`` в transport.
+    """
+    from aiogram import F as _F
+
     router = Router(name=f"telegram-commands:{transport_id}")
+
+    if private_only:
+        # ПЕРВЫМ в роутере — перехватывает ВСЕ команды в нелс-чатах.
+        @router.message(Command(_ANY_COMMAND), ~(_F.chat.type == "private"))
+        async def _group_redirect(message: TgMessage) -> None:
+            await message.answer(PRIVATE_ONLY_REPLY)
 
     for spec in commands:
         _spec = spec
@@ -114,8 +132,6 @@ def build_command_router(
     if callbacks:
         for cb in callbacks:
             _cb = cb
-
-            from aiogram import F as _F
 
             async def _cb_checked(
                 query: CallbackQuery, __cb: CallbackSpec = _cb
