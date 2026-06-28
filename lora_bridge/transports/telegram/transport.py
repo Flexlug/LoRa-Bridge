@@ -100,12 +100,14 @@ class TelegramTransport(Transport):
                 self._store = ModerationStore(db_path)
 
             async def _on_role_changed(tg_id: int, chat_id: int) -> None:
-                """Вызывается после /role grant|revoke — сразу обновляет меню в ЛС."""
+                """Вызывается после /role grant|revoke — сразу обновляет меню в ЛС и группе."""
                 if self._store is None:
                     return
                 role = await self._store.get_role(self._owner_id, tg_id)
                 self._cmd_scope_done = {p for p in self._cmd_scope_done if p[0] != tg_id}
                 await self._set_user_commands(tg_id, role)
+                if chat_id != tg_id:  # chat_id != tg_id означает групповой чат
+                    await self._clear_user_group_commands(tg_id, chat_id)
 
             all_specs = (
                 make_basic_commands(self._store, owner_id, ALL_COMMAND_METAS)
@@ -141,6 +143,16 @@ class TelegramTransport(Transport):
         except Exception:
             log.debug("Не удалось обновить меню команд user=%d", tg_id)
 
+    async def _clear_user_group_commands(self, tg_id: int, group_chat_id: int) -> None:
+        """Явно скрыть команды для конкретного пользователя в конкретной группе."""
+        from aiogram.types import BotCommandScopeChatMember
+        try:
+            await self._bot.set_my_commands(
+                [], scope=BotCommandScopeChatMember(chat_id=group_chat_id, user_id=tg_id)
+            )
+        except Exception:
+            log.debug("Не удалось скрыть меню в группе user=%d chat=%d", tg_id, group_chat_id)
+
     async def start(self) -> None:
         me = await self._bot.get_me()  # verify: бот доступен (sanity)
         log.info("Telegram-транспорт '%s': бот @%s (id=%d) подключён", self.id, me.username, me.id)
@@ -153,11 +165,13 @@ class TelegramTransport(Transport):
             await self._bot.set_my_commands(user_menu)  # verify
             # в группах подсказки команд скрыты — все команды только в ЛС
             await self._bot.set_my_commands([], scope=BotCommandScopeAllGroupChats())
-            # per-user меню только в ЛС для privileged users
+            # per-user меню только в ЛС; в группах — явно пусто
             privileged = await self._store.get_all_privileged()
-            for tg_id, role_str, _ in privileged:
+            for tg_id, role_str, last_chat_id in privileged:
                 role = Role.ADMIN if role_str == "admin" else Role.MODERATOR
                 await self._set_user_commands(tg_id, role)
+                if last_chat_id is not None:
+                    await self._clear_user_group_commands(tg_id, last_chat_id)
 
         self._poll_task = asyncio.create_task(
             self._dp.start_polling(self._bot, handle_signals=False)  # verify
