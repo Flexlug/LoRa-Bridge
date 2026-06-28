@@ -1,0 +1,21 @@
+# Сборочный контекст держим минимальным: ставим из pyproject.toml + uv.lock.
+.git
+.github
+.idea
+.claude
+.venv
+.mypy_cache
+.ruff_cache
+.pytest_cache
+.beads
+
+# Локальные секреты и рантайм-артефакты — внутрь образа не попадают
+.env
+config.yaml
+*.sqlite
+*.log
+
+# Документация и тесты не нужны для рантайма
+docs
+tests
+site

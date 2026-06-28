@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import functools
 import logging
-from typing import Optional, assert_never
 from dataclasses import dataclass, replace
+from typing import Optional, assert_never
+
+import anyio
 
 from .dedup import TtlDedup
 from .egress import RadioWorker
@@ -101,8 +103,14 @@ class Bridge:
         try:
             await supervisor.run()
         finally:
-            for transport in reversed(all_transports):
-                await transport.stop()
+            # shield: при graceful-выходе scope уже отменён, без него первый await
+            # в stop() бросил бы Cancelled и оставил остальные транспорты незакрытыми.
+            with anyio.CancelScope(shield=True):
+                for transport in reversed(all_transports):
+                    try:
+                        await transport.stop()
+                    except Exception:  # noqa: BLE001 — на shutdown не валим остальные stop()
+                        log.exception("остановка транспорта '%s' упала", transport.id)
 
     def build_worker(self, node: NodeRuntime) -> RadioWorker:
         return RadioWorker(
