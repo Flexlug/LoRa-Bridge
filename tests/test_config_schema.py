@@ -82,19 +82,18 @@ def test_endpoint_union_is_exhaustive():
 # ---------------------------------------------------------------------------
 
 
-def test_unknown_connection_type_rejected():
+@pytest.mark.parametrize(
+    "conn",
+    [
+        {"type": "bluetooth", "address": "x"},  # неизвестный тег дискриминатора
+        {"type": "tcp", "port": 5050},          # tcp без host
+        {"type": "tcp", "host": "h"},           # tcp без port
+    ],
+    ids=["unknown_type", "tcp_missing_host", "tcp_missing_port"],
+)
+def test_invalid_connection_rejected(conn):
     with pytest.raises(ValidationError):
-        MeshCoreNode.model_validate(_node({"type": "bluetooth", "address": "x"}))
-
-
-def test_tcp_missing_host_rejected():
-    with pytest.raises(ValidationError):
-        MeshCoreNode.model_validate(_node({"type": "tcp", "port": 5050}))
-
-
-def test_tcp_missing_port_rejected():
-    with pytest.raises(ValidationError):
-        MeshCoreNode.model_validate(_node({"type": "tcp", "host": "h"}))
+        MeshCoreNode.model_validate(_node(conn))
 
 
 # ---------------------------------------------------------------------------
@@ -120,29 +119,26 @@ def test_all_endpoint_types_valid(ep):
 # ---------------------------------------------------------------------------
 
 
-def test_unknown_endpoint_type_rejected():
+@pytest.mark.parametrize(
+    "ep",
+    [
+        {"type": "multicast"},                          # неизвестный тег
+        {"type": "public"},                             # public без channel_name
+        {"type": "private", "secret": "s"},             # private без channel_name
+        {"type": "private", "channel_name": "Ops"},     # private без secret
+        {"type": "room_server"},                        # room_server без pubkey
+    ],
+    ids=[
+        "unknown_type",
+        "public_missing_channel_name",
+        "private_missing_channel_name",
+        "private_missing_secret",
+        "room_server_missing_pubkey",
+    ],
+)
+def test_invalid_endpoint_rejected(ep):
     with pytest.raises(ValidationError):
-        MeshCoreNode.model_validate(_node(_TCP, {"ch": {"type": "multicast"}}))
-
-
-def test_public_endpoint_missing_channel_name_rejected():
-    with pytest.raises(ValidationError):
-        MeshCoreNode.model_validate(_node(_TCP, {"ch": {"type": "public"}}))
-
-
-def test_private_endpoint_missing_channel_name_rejected():
-    with pytest.raises(ValidationError):
-        MeshCoreNode.model_validate(_node(_TCP, {"ch": {"type": "private", "secret": "s"}}))
-
-
-def test_private_endpoint_missing_secret_rejected():
-    with pytest.raises(ValidationError):
-        MeshCoreNode.model_validate(_node(_TCP, {"ch": {"type": "private", "channel_name": "Ops"}}))
-
-
-def test_room_server_endpoint_missing_pubkey_rejected():
-    with pytest.raises(ValidationError):
-        MeshCoreNode.model_validate(_node(_TCP, {"ch": {"type": "room_server"}}))
+        MeshCoreNode.model_validate(_node(_TCP, {"ch": ep}))
 
 
 # ---------------------------------------------------------------------------
