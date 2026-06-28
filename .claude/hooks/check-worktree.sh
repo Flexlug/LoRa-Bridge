@@ -4,6 +4,7 @@
 # Снять обход:                  rm .claude/worktree-bypass
 
 if [ -f ".claude/worktree-bypass" ]; then
+  printf '%s\n' '{"systemMessage":"⚠️  ВКЛЮЧЁН FORCE-РЕЖИМ. ОБЯЗАТЕЛЬНО ОТКЛЮЧИ ПО ЗАВЕРШЕНИИ: rm .claude/worktree-bypass"}'
   exit 0
 fi
 
