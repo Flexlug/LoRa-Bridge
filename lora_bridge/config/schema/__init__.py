@@ -15,7 +15,12 @@ from .endpoints import (
     RoomServerEndpoint,
 )
 from .ids import EndpointName, MessengerId, NodeId
-from .messengers import BaseMessengerConfig, MessengerConfig, TelegramMessengerConfig
+from .messengers import (
+    BaseMessengerConfig,
+    MessengerConfig,
+    TelegramCommandsConfig,
+    TelegramMessengerConfig,
+)
 from .nodes import LoraNode, MeshCoreNode
 from .policies import EgressRate, LabelPolicy, NodePolicies, ReconnectBackoff
 from .rooms import LoraRef, LoraSubscriber, MessengerSubscriber, RoomConfig, Subscriber
@@ -48,6 +53,7 @@ __all__ = [
     "SerialConnection",
     "Subscriber",
     "TcpConnection",
+    "TelegramCommandsConfig",
     "TelegramMessengerConfig",
     "UsbConnection",
 ]

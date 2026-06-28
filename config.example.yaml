@@ -64,6 +64,9 @@ messengers:
     tag: "TG"             # переопределение тега (по умолчанию из kind)
     token: ${TG_BOT_TOKEN}
     # privacy mode у бота ДОЛЖЕН быть отключён (BotFather /setprivacy → Disable)
+    # commands:                  # опционально; без блока — командный роутер не включается
+    #   owner_id: 123456789      # Telegram user ID владельца (роль OWNER)
+    #   alias_max_chars: 16      # максимальная длина псевдонима (по умолчанию 16)
 
 rooms:
   # Вариант 1: 1 LoRa + N мессенджеров
