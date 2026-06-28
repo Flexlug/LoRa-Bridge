@@ -1,12 +1,12 @@
-"""Транспорт-локальные команды Telegram — «своя жизнь» бота вне общего pipeline.
+"""Каркас транспорт-локальных команд Telegram — стабильная часть подсистемы.
 
-Команды обрабатываются ЗДЕСЬ, на стороне транспорта, и НЕ публикуются в ``Hub`` —
-значит не доходят до моста LoRa (``Bridge.admit``).
+Здесь живёт всё, что НЕ меняется при добавлении команды: контракт ``CommandSpec``,
+сборка роутера (``build_command_router``), сеть неизвестных команд и проекции
+реестра в текст ``/help`` (``render_help``) и меню Telegram (``command_menu``).
 
-Реестр ``COMMANDS`` — единственный источник правды; из него питаются три потребителя:
-регистрация хэндлеров в роутере (``build_command_router``), текст ``/help``
-(``render_help``) и меню Telegram (``command_menu`` → ``Bot.set_my_commands``).
-Шов расширения: добавить команду = добавить строку ``CommandSpec`` в ``COMMANDS``.
+Сами команды — в ``handlers`` (растущая часть). Импорт односторонний
+(``handlers`` → ``framework``): каркас о конкретных командах не знает, поэтому
+проекции принимают реестр аргументом, а не читают глобальный список.
 
 Сеть неизвестных команд (``_ANY_COMMAND``) закрывает namespace: любое
 command-shaped сообщение по грамматике aiogram (``/`` + ``[A-Za-z0-9_]``, не наивный
@@ -42,7 +42,7 @@ CommandHandler = Callable[[TgMessage], Awaitable[None]]
 
 @dataclass(frozen=True)
 class CommandSpec:
-    """Одна транспорт-локальная команда: строка реестра ``COMMANDS``.
+    """Одна транспорт-локальная команда: строка реестра ``COMMANDS`` (в ``handlers``).
 
     ``name`` — имя без ведущего ``/`` (грамматика aiogram); ``description`` идёт и в
     ``/help``, и в меню Telegram; ``handler`` — корутина-обработчик aiogram.
@@ -53,38 +53,23 @@ class CommandSpec:
     handler: CommandHandler
 
 
-async def ping(message: TgMessage) -> None:
-    await message.answer("pong")
-
-
-async def show_help(message: TgMessage) -> None:
-    await message.answer(render_help())
-
-
-# Реестр команд. Порядок = порядок и в /help, и в меню Telegram.
-COMMANDS: list[CommandSpec] = [
-    CommandSpec("ping", "проверка живости бота", ping),
-    CommandSpec("help", "список доступных команд", show_help),
-]
-
-
-def render_help() -> str:
-    """Текст ``/help`` из реестра — описания берутся из единого ``COMMANDS``."""
-    lines = [f"/{spec.name} — {spec.description}" for spec in COMMANDS]
+def render_help(commands: list[CommandSpec]) -> str:
+    """Текст ``/help`` из переданного реестра — описания берутся из ``CommandSpec``."""
+    lines = [f"/{spec.name} — {spec.description}" for spec in commands]
     return "Доступные команды:\n" + "\n".join(lines)
 
 
-def command_menu() -> list[BotCommand]:
-    """Меню для ``Bot.set_my_commands`` — из того же ``COMMANDS``, без дрейфа."""
-    return [BotCommand(command=spec.name, description=spec.description) for spec in COMMANDS]
+def command_menu(commands: list[CommandSpec]) -> list[BotCommand]:
+    """Меню для ``Bot.set_my_commands`` — из того же реестра, без дрейфа."""
+    return [BotCommand(command=spec.name, description=spec.description) for spec in commands]
 
 
-def build_command_router(transport_id: str) -> Router:
+def build_command_router(transport_id: str, commands: list[CommandSpec]) -> Router:
     """Роутер транспорт-локальных команд. Включать ДО bridge-хэндлера ``on_message``."""
     router = Router(name=f"telegram-commands:{transport_id}")
 
     # Известные команды из реестра — в объявленном порядке.
-    for spec in COMMANDS:
+    for spec in commands:
         router.message.register(spec.handler, Command(spec.name))
 
     # Сеть неизвестных команд — ПОСЛЕДНЯЯ в роутере (после всех известных),

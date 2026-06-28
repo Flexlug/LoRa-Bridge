@@ -83,7 +83,7 @@ async def test_plain_text_is_published_to_pipeline() -> None:
 async def test_help_lists_every_registered_command() -> None:
     # render_help() — чистая функция: реестр единственный источник правды,
     # каждый зарегистрированный command попадает в выхлоп с описанием.
-    help_text = render_help()
+    help_text = render_help(COMMANDS)
     for spec in COMMANDS:
         assert f"/{spec.name}" in help_text
         assert spec.description in help_text
@@ -101,7 +101,7 @@ async def test_help_command_does_not_publish() -> None:
 
 def test_command_menu_mirrors_registry() -> None:
     # Меню Telegram (set_my_commands) строится из того же реестра — без дрейфа.
-    assert command_menu() == [
+    assert command_menu(COMMANDS) == [
         BotCommand(command=spec.name, description=spec.description) for spec in COMMANDS
     ]
 
@@ -121,4 +121,4 @@ async def test_start_registers_command_menu() -> None:
 
     transport._bot.set_my_commands.assert_awaited_once()
     sent = transport._bot.set_my_commands.await_args.args[0]
-    assert sent == command_menu()
+    assert sent == command_menu(COMMANDS)
