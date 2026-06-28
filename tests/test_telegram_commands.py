@@ -65,13 +65,6 @@ async def _feed(
     )
 
 
-async def test_known_command_does_not_publish() -> None:
-    transport = await _make_transport_with_commands()
-    await _feed(transport, "/ping")
-    transport._hub.publish.assert_not_called()
-    sent = transport._bot.session.await_args.args[1]
-    assert sent.text == "pong"
-
 
 async def test_unknown_command_does_not_publish() -> None:
     transport = await _make_transport_with_commands()
@@ -91,13 +84,12 @@ async def test_plain_text_is_published_to_pipeline() -> None:
 
 async def test_command_without_commands_block_does_not_publish() -> None:
     transport = _make_transport_no_commands()
-    await _feed(transport, "/ping")
+    await _feed(transport, "/help")
     transport._hub.publish.assert_not_called()
 
 
 async def test_help_lists_commands_for_user_role() -> None:
     help_text = render_help([m for m in ALL_COMMAND_METAS if m.min_role <= Role.USER])
-    assert "/ping" in help_text
     assert "/help" in help_text
 
 
@@ -116,7 +108,7 @@ def test_command_menu_filters_by_role() -> None:
     mod_menu = command_menu(ALL_COMMAND_METAS, Role.MODERATOR)
     user_names = {c.command for c in user_menu}
     mod_names = {c.command for c in mod_menu}
-    assert "ping" in user_names
+    assert "help" in user_names
     assert "ban" not in user_names
     assert "ban" in mod_names
 
@@ -124,7 +116,7 @@ def test_command_menu_filters_by_role() -> None:
 async def test_command_in_group_redirects_to_dm() -> None:
     """Любая команда в группе — редирект в ЛС, не выполняется."""
     transport = await _make_transport_with_commands()
-    await _feed(transport, "/ping", chat_type="supergroup", chat_id=-100123)
+    await _feed(transport, "/help", chat_type="supergroup", chat_id=-100123)
     transport._hub.publish.assert_not_called()
     sent = transport._bot.session.await_args.args[1]
     assert PRIVATE_ONLY_REPLY in sent.text

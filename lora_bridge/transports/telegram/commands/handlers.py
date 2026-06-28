@@ -19,13 +19,8 @@ if TYPE_CHECKING:
 
 # Статические метаданные для документации и /help; без хендлеров.
 BASIC_COMMAND_METAS: list[CommandMeta] = [
-    CommandMeta("ping", "проверка живости бота", Role.USER),
     CommandMeta("help", "список доступных команд", Role.USER),
 ]
-
-
-async def _ping(message: TgMessage) -> None:
-    await message.reply("pong")
 
 
 def make_basic_commands(
@@ -33,7 +28,7 @@ def make_basic_commands(
     owner_id: int,
     all_metas: list[CommandMeta],
 ) -> list[CommandSpec]:
-    """Фабрика базовых команд (ping + help) с замыканием над store."""
+    """Фабрика базовых команд (/help) с замыканием над store."""
 
     async def _show_help(message: TgMessage) -> None:
         uid = message.from_user.id if message.from_user else 0
@@ -42,6 +37,5 @@ def make_basic_commands(
         await message.reply(render_help(visible, role), parse_mode="HTML")
 
     return [
-        CommandSpec("ping", "проверка живости бота", Role.USER, _ping),
         CommandSpec("help", "список доступных команд", Role.USER, _show_help),
     ]
