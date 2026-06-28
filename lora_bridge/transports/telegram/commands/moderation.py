@@ -4,6 +4,7 @@ from __future__ import annotations
 import html
 import math
 import time
+from collections.abc import Awaitable, Callable
 from typing import Optional, TYPE_CHECKING
 
 from aiogram.types import (
@@ -99,6 +100,8 @@ async def _send_audit_page_edit(query: CallbackQuery, page: int, store: "Moderat
 def make_moderation_commands(
     store: "ModerationStore",
     cfg: object,
+    *,
+    on_role_changed: Callable[[int, int], Awaitable[None]] | None = None,
 ) -> list[CommandSpec]:
     """Фабрика команд модерации с замыканием над store и cfg."""
     owner_id: int = getattr(cfg, "owner_id", 0)
@@ -279,6 +282,8 @@ def make_moderation_commands(
             ts=int(time.time()), actor_id=actor_id, actor_name=actor_name,
             action=action_str, target_id=target_id, detail=f"role: {role_str}",
         )
+        if on_role_changed is not None:
+            await on_role_changed(target_id, message.chat.id)
         verb = "выдана" if action_str == "grant" else "отозвана"
         await message.answer(
             f"Роль {role_str} {verb} для {_mention(target_id, None)}.", parse_mode="HTML"

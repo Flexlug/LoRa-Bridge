@@ -86,6 +86,8 @@ class TelegramTransport(Transport):
         self._dp = Dispatcher()
         self._store: Optional[ModerationStore] = None
         self._owner_id: int = 0
+        # (tg_id, chat_id) — уже обновлённые scope; избегаем лишних API-вызовов
+        self._cmd_scope_done: set[tuple[int, int]] = set()
 
         if config.commands is not None:
             owner_id = config.commands.owner_id
@@ -96,14 +98,46 @@ class TelegramTransport(Transport):
                 from ...settings import Settings
                 db_path = Settings.from_env().db_path
                 self._store = ModerationStore(db_path)
+
+            async def _on_role_changed(tg_id: int, chat_id: int) -> None:
+                """Вызывается после /role grant|revoke — сразу обновляет меню."""
+                if self._store is None:
+                    return
+                role = await self._store.get_role(self._owner_id, tg_id)
+                # сбросить кеш для пользователя, чтобы middleware перепроверил
+                self._cmd_scope_done = {p for p in self._cmd_scope_done if p[0] != tg_id}
+                await self._set_user_commands(tg_id, tg_id, role)      # ЛС
+                if chat_id < 0:
+                    await self._set_user_commands(tg_id, chat_id, role) # группа
+
             all_specs = (
                 make_basic_commands(self._store, owner_id, ALL_COMMAND_METAS)
-                + make_moderation_commands(self._store, config.commands)
+                + make_moderation_commands(
+                    self._store, config.commands, on_role_changed=_on_role_changed
+                )
             )
             callbacks = make_audit_callbacks(self._store)
             self._dp.include_router(
                 build_command_router(self.id, all_specs, self._store, owner_id, callbacks)
             )
+
+            # Middleware: обновить scope при первом появлении привилегированного
+            # пользователя в новом групповом чате (lazy, чтобы не трогать все группы).
+            @self._dp.message.outer_middleware()
+            async def _scope_mw(
+                handler: object, message: TgMessage, data: dict[object, object]
+            ) -> object:
+                if (
+                    message.from_user
+                    and message.chat.id < 0  # только группы
+                    and self._store is not None
+                ):
+                    uid = message.from_user.id
+                    cid = message.chat.id
+                    if (uid, cid) not in self._cmd_scope_done:
+                        role = await self._store.get_role(self._owner_id, uid)
+                        await self._set_user_commands(uid, cid, role)
+                return await handler(message, data)  # type: ignore[call-arg]
         else:
             # только catchall — команды не утекают в pipeline даже без блока commands:
             self._dp.include_router(build_command_router(self.id, []))
@@ -115,27 +149,41 @@ class TelegramTransport(Transport):
         self._dp.include_router(bridge)
         self._reactions = ReactionFeedback(self._bot)
 
+    async def _set_user_commands(self, tg_id: int, chat_id: int, role: Role) -> None:
+        """Выставить меню команд для пользователя в конкретном чате (или ЛС)."""
+        from aiogram.types import BotCommandScopeChat, BotCommandScopeChatMember
+        menu = command_menu(ALL_COMMAND_METAS, role)
+        try:
+            if chat_id < 0:
+                # групповой чат — per-member scope
+                await self._bot.set_my_commands(
+                    menu, scope=BotCommandScopeChatMember(chat_id=chat_id, user_id=tg_id)
+                )
+            else:
+                # приватный чат: chat_id у ЛС равен user_id
+                await self._bot.set_my_commands(
+                    menu, scope=BotCommandScopeChat(chat_id=tg_id)
+                )
+            self._cmd_scope_done.add((tg_id, chat_id))
+        except Exception:
+            log.debug("Не удалось обновить меню команд user=%d chat=%d", tg_id, chat_id)
+
     async def start(self) -> None:
         me = await self._bot.get_me()  # verify: бот доступен (sanity)
         log.info("Telegram-транспорт '%s': бот @%s (id=%d) подключён", self.id, me.username, me.id)
 
         if self._store is not None:
             await self._store.start()
-            # дефолтное меню — USER-уровень для всех
+            # глобальный дефолт — USER для всех
             user_menu = command_menu(ALL_COMMAND_METAS, Role.USER)
             await self._bot.set_my_commands(user_menu)  # verify
-            # восстановить per-user меню для privileged users из БД
+            # восстановить per-user меню для privileged users
             privileged = await self._store.get_all_privileged()
             for tg_id, role_str, last_chat_id in privileged:
-                if last_chat_id is None:
-                    continue
                 role = Role.ADMIN if role_str == "admin" else Role.MODERATOR
-                role_menu = command_menu(ALL_COMMAND_METAS, role)
-                from aiogram.types import BotCommandScopeChatMember
-                await self._bot.set_my_commands(  # verify
-                    role_menu,
-                    scope=BotCommandScopeChatMember(chat_id=last_chat_id, user_id=tg_id),
-                )
+                await self._set_user_commands(tg_id, tg_id, role)          # ЛС всегда
+                if last_chat_id is not None and last_chat_id < 0:
+                    await self._set_user_commands(tg_id, last_chat_id, role) # группа если известна
 
         self._poll_task = asyncio.create_task(
             self._dp.start_polling(self._bot, handle_signals=False)  # verify
