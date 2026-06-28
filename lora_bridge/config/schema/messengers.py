@@ -34,6 +34,16 @@ class BaseMessengerConfig(BaseModel):
     )
 
 
+class TelegramCommandsConfig(BaseModel):
+    """Опциональный блок команд Telegram-бота. Отсутствие = команды выключены."""
+
+    owner_id: int = Field(description="Telegram user ID владельца бота (роль OWNER).")
+    alias_max_chars: int = Field(
+        default=16,
+        description="Максимальная длина псевдонима пользователя.",
+    )
+
+
 class TelegramMessengerConfig(BaseMessengerConfig):
     """Конфиг Telegram-бота.
 
@@ -46,6 +56,10 @@ class TelegramMessengerConfig(BaseMessengerConfig):
         description="Тег дискриминатора — должно быть ``telegram``."
     )
     token: str = Field(description="Telegram Bot API token, выданный BotFather.")
+    commands: Optional[TelegramCommandsConfig] = Field(
+        default=None,
+        description="Блок команд; отсутствие или null отключает командный роутер.",
+    )
 
 
 MessengerConfig = Annotated[

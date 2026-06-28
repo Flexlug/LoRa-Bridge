@@ -16,6 +16,7 @@ from lora_bridge.config.schema import (
     EndpointBase,
     MessengerConfig,
     MeshCoreNode,
+    TelegramCommandsConfig,
     TelegramMessengerConfig,
 )
 
@@ -210,3 +211,32 @@ def test_unknown_messenger_kind_rejected():
 def test_telegram_missing_token_rejected():
     with pytest.raises(ValidationError):
         TelegramMessengerConfig.model_validate({"id": "tg", "kind": "telegram"})
+
+
+# ---------------------------------------------------------------------------
+# TelegramCommandsConfig
+# ---------------------------------------------------------------------------
+
+
+def test_telegram_commands_optional() -> None:
+    cfg = TelegramMessengerConfig(id="tg", kind="telegram", token="tok")
+    assert cfg.commands is None
+
+
+def test_telegram_commands_with_block() -> None:
+    cfg = TelegramMessengerConfig(
+        id="tg", kind="telegram", token="tok",
+        commands=TelegramCommandsConfig(owner_id=123),
+    )
+    assert cfg.commands is not None
+    assert cfg.commands.owner_id == 123
+    assert cfg.commands.alias_max_chars == 16
+
+
+def test_telegram_commands_alias_max_chars_custom() -> None:
+    cfg = TelegramMessengerConfig(
+        id="tg", kind="telegram", token="tok",
+        commands=TelegramCommandsConfig(owner_id=1, alias_max_chars=8),
+    )
+    assert cfg.commands is not None
+    assert cfg.commands.alias_max_chars == 8

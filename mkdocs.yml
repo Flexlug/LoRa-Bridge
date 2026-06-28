@@ -7,6 +7,7 @@ docs_dir: docs
 # но в выходной site/ копировать его не нужно — это не страница доки.
 exclude_docs: |
   gen_pages.py
+  superpowers/**
 
 theme:
   name: material
@@ -72,3 +73,6 @@ nav:
   - Для разработчиков:
       - Обзор: contributing/index.md
       - Архитектура: ARCHITECTURE.md
+      - Дизайн-спеки: contributing/design-specs.md
+  - Справочник:
+      - Команды бота: reference/commands.md

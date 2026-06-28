@@ -24,7 +24,7 @@ _FAKE_TOKEN = "123456:AAFakeFakeFakeFakeFakeFakeFakeFakeFak"
 
 
 def _make_transport() -> TelegramTransport:
-    config = SimpleNamespace(token=_FAKE_TOKEN)
+    config = SimpleNamespace(token=_FAKE_TOKEN, commands=None)
     transport = TelegramTransport("tg", config)  # type: ignore[arg-type]
     transport._bot.send_message = AsyncMock()  # type: ignore[method-assign]
     return transport

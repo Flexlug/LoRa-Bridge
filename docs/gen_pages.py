@@ -128,6 +128,11 @@ def main() -> None:
         yaml_example=ROOMS_EXAMPLE,
         root_model=schema.RoomConfig,
     )
+    emit_commands_page(
+        path="reference/commands.md",
+        title="Команды Telegram-бота",
+    )
+    emit_specs_index(path="contributing/design-specs.md")
 
 
 def emit_section_page(
@@ -330,6 +335,60 @@ def _unwrap_annotated(t: Any) -> Any:
     while hasattr(t, "__metadata__"):
         t = t.__origin__
     return t
+
+
+from pathlib import Path as _Path
+
+
+def emit_commands_page(*, path: str, title: str) -> None:
+    from lora_bridge.transports.telegram.commands import ALL_COMMAND_METAS
+
+    parts = [
+        f"# {title}",
+        "",
+        "Список команд Telegram-бота. Генерируется автоматически из реестра.",
+        "",
+        "| Команда | Мин. роль | Описание |",
+        "|---------|-----------|----------|",
+    ]
+    for meta in ALL_COMMAND_METAS:
+        parts.append(f"| `/{meta.name}` | {meta.min_role.name.lower()} | {meta.description} |")
+
+    with mkdocs_gen_files.open(path, "w") as f:
+        f.write("\n".join(parts))
+
+
+def emit_specs_index(*, path: str) -> None:
+    specs_dir = _Path(__file__).resolve().parent / "superpowers" / "specs"
+    if not specs_dir.exists():
+        return
+
+    rows: list[tuple[str, str, str]] = []
+    for spec_file in sorted(specs_dir.glob("*.md")):
+        date = spec_file.name[:10]
+        title = spec_file.name
+        try:
+            first_line = spec_file.read_text(encoding="utf-8").splitlines()[0]
+            if first_line.startswith("# "):
+                title = first_line[2:].strip()
+        except (IndexError, OSError):
+            pass
+        rel_path = f"../../superpowers/specs/{spec_file.name}"
+        rows.append((date, title, rel_path))
+
+    parts = [
+        "# Дизайн-спеки",
+        "",
+        "Зафиксированные дизайн-решения. Генерируется автоматически — новый спек появляется здесь после добавления файла в `docs/superpowers/specs/`.",
+        "",
+        "| Дата | Документ |",
+        "|------|----------|",
+    ]
+    for date, title, _ in rows:
+        parts.append(f"| {date} | {title} |")
+
+    with mkdocs_gen_files.open(path, "w") as f:
+        f.write("\n".join(parts))
 
 
 main()
