@@ -1,0 +1,23 @@
+services:
+  lora-bridge:
+    build: .
+    restart: unless-stopped
+
+    # Проброс LoRa-устройств — раскомментируй и подставь свои пути из config.yaml.
+    # Узнать: `ls -l /dev/ttyUSB* /dev/ttyACM*`.
+    # devices:
+    #   - "/dev/ttyUSB0:/dev/ttyUSB0"
+    #   - "/dev/ttyACM0:/dev/ttyACM0"
+
+    volumes:
+      - ./config.yaml:/config/config.yaml:ro
+      - lora-data:/data
+
+    environment:
+      - TG_BOT_TOKEN=${TG_BOT_TOKEN}
+      - LORA_BRIDGE_LOG=INFO
+
+    stop_grace_period: 10s
+
+volumes:
+  lora-data:

@@ -23,6 +23,17 @@ LORA_BRIDGE_CONFIG=config.yaml lora-bridge
 | `LORA_BRIDGE_DB`     | `lora_bridge.sqlite` | Путь к SQLite-журналу намерений      |
 | `LORA_BRIDGE_LOG`    | `INFO`               | Уровень логов: `DEBUG`/`INFO`/`WARNING` |
 
+## Запуск в Docker
+
+```bash
+cp config.example.yaml config.yaml      # заполнить секреты и маршруты
+export TG_BOT_TOKEN=123:ABC...          # подставится в ${TG_BOT_TOKEN} конфига
+docker compose up --build
+```
+
+Для проброса LoRa-устройств раскомментируй блок `devices:` в `docker-compose.yml`
+и пропиши свои `/dev/tty*` (те же пути, что в `connection.port` конфига).
+
 ## Документация
 
 Полная документация — в [docs/](docs/index.md) (или собирается как сайт через `uv run mkdocs serve`):

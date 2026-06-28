@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import signal
 import sys
 
 import anyio
@@ -71,9 +72,32 @@ async def run(config: AppConfig, settings: Settings) -> None:
         journal=journal,
     )
     try:
-        await bridge.run()
+        async with anyio.create_task_group() as tg:
+            tg.start_soon(_watch_signals, tg.cancel_scope)
+            await bridge.run()
+            tg.cancel_scope.cancel()  # bridge.run вернулся сам → снять watcher
     finally:
-        await journal.stop()
+        # journal.stop() под shield: при graceful-выходе scope уже отменён сигналом,
+        # без shield первый await сбросил бы запись журнала (§11.1 persist-before-act).
+        with anyio.CancelScope(shield=True):
+            await journal.stop()
+
+
+async def _watch_signals(scope: anyio.CancelScope) -> None:
+    """Перехват SIGINT/SIGTERM → graceful-отмена (Ctrl+C и `docker stop`, §13).
+
+    Без установленного обработчика дефолтный SIGTERM убил бы процесс мимо `finally`
+    (журнал/соединения недозакрыты), а SIGINT всплыл бы трейсбэком. По первому
+    сигналу отменяем scope и выходим из receiver — обработчики снимаются, поэтому
+    повторный Ctrl+C завершает процесс немедленно без трейсбэка (страховка на случай,
+    если graceful-очистка подвиснет).
+    """
+    with anyio.open_signal_receiver(signal.SIGINT, signal.SIGTERM) as signals:
+        async for signum in signals:
+            name = signal.Signals(signum).name
+            log.info("получен %s — завершаюсь (повтор Ctrl+C для немедленного выхода)", name)
+            scope.cancel()
+            return
 
 
 def main() -> None:
@@ -90,7 +114,13 @@ def main() -> None:
     except ValidationError as exc:
         sys.stderr.write(format_validation_error(exc))
         sys.exit(2)
-    anyio.run(run, config, settings)
+    try:
+        anyio.run(run, config, settings)
+    except KeyboardInterrupt:
+        # Ctrl+C в окне до установки receiver (сборка графа, journal.start, recover)
+        # приходит дефолтным KeyboardInterrupt — выходим кодом 130 без трейсбэка.
+        log.warning("прервано на старте — выход")
+        sys.exit(130)
 
 
 if __name__ == "__main__":
