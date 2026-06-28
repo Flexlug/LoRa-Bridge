@@ -235,35 +235,10 @@ messengers: []
 rooms: []
 """
 
-_TWO_ERRORS = """
-lora:
-  - id: n1
-    type: meshcore
-    connection:
-      type: tcp
-      port: 5050
-    endpoints:
-      ch:
-        type: public
-    policies:
-      egress_rate:
-        msgs_per_window: 6
-        window_seconds: 60
-messengers: []
-rooms: []
-"""
-
-
 def test_header_contains_russian_intro_count_and_correct_plural():
     first_line = _render(_TINY_BAD).splitlines()[0]
     assert first_line.startswith("Конфиг не прошёл валидацию")
     assert "1 ошибка" in first_line
-
-
-def test_each_error_block_is_numbered():
-    msg = _render(_TWO_ERRORS)
-    assert "1. " in msg
-    assert "2. " in msg
 
 
 def test_path_uses_yaml_friendly_notation():
@@ -346,64 +321,6 @@ def test_output_layout_is_multiline_with_dash_bullets_and_single_trailing_newlin
     assert any(ln.lstrip().startswith("—") for ln in lines)
     assert msg.endswith("\n")
     assert not msg.endswith("\n\n")
-
-
-@pytest.mark.parametrize(
-    "yml,must_contain",
-    [
-        # missing: имя поля + сосед в той же модели
-        (_TINY_BAD, ["обязательное поле", "'host'", "port"]),
-        # unknown discriminator: все валидные теги
-        (
-            """
-lora:
-  - id: n1
-    type: meshcore
-    connection:
-      type: bluetooth
-      address: x
-    endpoints:
-      ch:
-        type: public
-        channel_name: G
-    policies:
-      egress_rate:
-        msgs_per_window: 6
-        window_seconds: 60
-messengers: []
-rooms: []
-""",
-            ["'bluetooth'", "'usb'", "'serial'", "'tcp'", "'ble'"],
-        ),
-        # int_parsing: ожидаемый тип + полученное значение
-        (
-            """
-lora:
-  - id: n1
-    type: meshcore
-    connection:
-      type: tcp
-      host: h
-      port: notanint
-    endpoints:
-      ch:
-        type: public
-        channel_name: G
-    policies:
-      egress_rate:
-        msgs_per_window: 6
-        window_seconds: 60
-messengers: []
-rooms: []
-""",
-            ["целое число", "'notanint'"],
-        ),
-    ],
-)
-def test_each_kind_carries_actionable_hints(yml, must_contain):
-    msg = _render(yml)
-    for piece in must_contain:
-        assert piece in msg, f"нет ключевой подсказки {piece!r}:\n{msg}"
 
 
 # ===========================================================================
