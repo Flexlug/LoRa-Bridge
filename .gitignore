@@ -50,3 +50,6 @@ Thumbs.db
 # Git worktrees (живут только в .claude/worktrees/, не трекаются)
 worktrees/
 .claude/worktrees/
+
+# Временный обход хука worktree-guard (создаётся вручную для срочных фиксов в main)
+.claude/worktree-bypass
