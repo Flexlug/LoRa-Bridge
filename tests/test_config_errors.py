@@ -109,7 +109,8 @@ def test_unknown_discriminator_tag_lists_valid_tags(cfg, path, bad_tag, valid_ta
 def test_missing_required_field_names_variant_and_siblings(cfg, path, variant, siblings):
     msg = _format(cfg)
     assert path in msg
-    assert "обязательное поле" in msg
+    leaf = path.rsplit(".", 1)[-1]
+    assert f"обязательное поле '{leaf}'" in msg  # имя пропущенного поля в кавычках
     assert variant in msg
     for sib in siblings:
         assert sib in msg
@@ -228,5 +229,6 @@ def test_multiple_errors_all_reported_and_numbered():
         _cfg(connection={"type": "tcp", "port": 5050}, endpoint={"type": "public"}),
     )
     assert "1. lora[0].connection.host" in msg
+    assert "2. " in msg  # второй блок пронумерован
     assert "lora[0].endpoints.ch.channel_name" in msg
     assert "ошибки" in msg or "ошибок" in msg

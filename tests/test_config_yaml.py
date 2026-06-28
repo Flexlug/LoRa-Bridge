@@ -114,26 +114,20 @@ def _cfg_with(*, connection: dict, endpoint: dict | None = None) -> str:
     return yaml.safe_dump(cfg, default_flow_style=False, sort_keys=False)
 
 
-def test_connection_usb():
-    cfg = parse(_cfg_with(connection={"type": "usb", "device_id": "0403:6015"}))
-    assert cfg.lora[0].connection.device_id == "0403:6015"
-
-
-def test_connection_serial():
-    cfg = parse(_cfg_with(connection={"type": "serial", "port": "/dev/ttyUSB0"}))
-    assert cfg.lora[0].connection.port == "/dev/ttyUSB0"
-
-
-def test_connection_tcp():
-    cfg = parse(_cfg_with(connection={"type": "tcp", "host": "192.168.1.1", "port": 5000}))
-    conn = cfg.lora[0].connection
-    assert conn.host == "192.168.1.1"
-    assert conn.port == 5000
-
-
-def test_connection_ble():
-    cfg = parse(_cfg_with(connection={"type": "ble", "address": "AA:BB:CC:DD:EE:FF"}))
-    assert cfg.lora[0].connection.address == "AA:BB:CC:DD:EE:FF"
+@pytest.mark.parametrize(
+    "connection,expected",
+    [
+        ({"type": "usb", "device_id": "0403:6015"}, {"device_id": "0403:6015"}),
+        ({"type": "serial", "port": "/dev/ttyUSB0"}, {"port": "/dev/ttyUSB0"}),
+        ({"type": "tcp", "host": "192.168.1.1", "port": 5000}, {"host": "192.168.1.1", "port": 5000}),
+        ({"type": "ble", "address": "AA:BB:CC:DD:EE:FF"}, {"address": "AA:BB:CC:DD:EE:FF"}),
+    ],
+    ids=["usb", "serial", "tcp", "ble"],
+)
+def test_connection_parses_through_yaml(connection, expected):
+    conn = parse(_cfg_with(connection=connection)).lora[0].connection
+    for attr, value in expected.items():
+        assert getattr(conn, attr) == value
 
 
 # ---------------------------------------------------------------------------
