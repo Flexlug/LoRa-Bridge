@@ -72,3 +72,6 @@ nav:
   - Для разработчиков:
       - Обзор: contributing/index.md
       - Архитектура: ARCHITECTURE.md
+      - Дизайн-спеки: contributing/design-specs.md
+  - Справочник:
+      - Команды бота: reference/commands.md
