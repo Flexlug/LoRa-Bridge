@@ -137,7 +137,7 @@ def test_no_unresolved_python_typing_repr(emitted):
 def test_commands_page_emitted(emitted):
     assert "reference/commands.md" in emitted
     page = emitted["reference/commands.md"]
-    assert "/ping" in page
+    assert "/help" in page
     assert "/ban" in page
     assert "moderator" in page.lower()
 
