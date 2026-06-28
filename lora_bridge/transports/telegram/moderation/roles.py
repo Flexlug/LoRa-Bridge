@@ -14,6 +14,4 @@ def can_grant(actor: Role, target: Role) -> bool:
 
 
 def can_revoke(actor: Role, target: Role) -> bool:
-    if actor == target:
-        return False
     return actor > target

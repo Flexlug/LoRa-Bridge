@@ -26,6 +26,6 @@ def test_can_revoke_strictly_below() -> None:
     assert can_revoke(Role.MODERATOR, Role.ADMIN) is False
 
 
-def test_can_revoke_self_always_false() -> None:
-    assert can_revoke(Role.OWNER, Role.OWNER) is False
-    assert can_revoke(Role.ADMIN, Role.ADMIN) is False
+def test_user_cannot_revoke() -> None:
+    assert can_revoke(Role.USER, Role.USER) is False
+    assert can_revoke(Role.USER, Role.MODERATOR) is False
