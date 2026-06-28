@@ -5,11 +5,9 @@ import datetime as dt
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-import pytest
-from aiogram.types import BotCommand, Chat, Message, Update, User
+from aiogram.types import Chat, Message, Update, User
 
 from lora_bridge.transports.telegram.commands import ALL_COMMAND_METAS, command_menu, render_help
-from lora_bridge.transports.telegram.commands.framework import CommandMeta
 from lora_bridge.transports.telegram.moderation.roles import Role
 from lora_bridge.transports.telegram.moderation.store import ModerationStore
 from lora_bridge.transports.telegram.transport import TelegramTransport

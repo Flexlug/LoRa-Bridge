@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import inspect
 import typing
+from pathlib import Path as _Path
 from typing import Any, Union, get_args, get_origin
 
 import mkdocs_gen_files
@@ -335,9 +336,6 @@ def _unwrap_annotated(t: Any) -> Any:
     while hasattr(t, "__metadata__"):
         t = t.__origin__
     return t
-
-
-from pathlib import Path as _Path
 
 
 def emit_commands_page(*, path: str, title: str) -> None:

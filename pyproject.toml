@@ -42,6 +42,7 @@ packages = ["lora_bridge"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+exclude = ["worktrees/", ".claude/worktrees/"]
 
 [tool.mypy]
 python_version = "3.11"
