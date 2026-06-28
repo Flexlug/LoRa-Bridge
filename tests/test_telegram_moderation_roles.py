@@ -1,3 +1,5 @@
+import pytest
+
 from lora_bridge.transports.telegram.moderation.roles import Role, can_grant, can_revoke
 
 
@@ -5,27 +7,21 @@ def test_role_ordering() -> None:
     assert Role.USER < Role.MODERATOR < Role.ADMIN < Role.OWNER
 
 
-def test_can_grant_strictly_below() -> None:
-    assert can_grant(Role.ADMIN, Role.MODERATOR) is True
-    assert can_grant(Role.ADMIN, Role.ADMIN) is False
-    assert can_grant(Role.ADMIN, Role.OWNER) is False
-
-
-def test_owner_can_grant_all() -> None:
-    assert can_grant(Role.OWNER, Role.ADMIN) is True
-    assert can_grant(Role.OWNER, Role.MODERATOR) is True
-
-
-def test_user_cannot_grant() -> None:
-    assert can_grant(Role.USER, Role.USER) is False
-
-
-def test_can_revoke_strictly_below() -> None:
-    assert can_revoke(Role.ADMIN, Role.MODERATOR) is True
-    assert can_revoke(Role.ADMIN, Role.ADMIN) is False
-    assert can_revoke(Role.MODERATOR, Role.ADMIN) is False
-
-
-def test_user_cannot_revoke() -> None:
-    assert can_revoke(Role.USER, Role.USER) is False
-    assert can_revoke(Role.USER, Role.MODERATOR) is False
+# can_grant и can_revoke имеют одинаковую семантику «строго выше цели» (actor > target),
+# поэтому проверяем обе одним набором кейсов.
+@pytest.mark.parametrize("check", [can_grant, can_revoke], ids=["grant", "revoke"])
+@pytest.mark.parametrize(
+    "actor,target,allowed",
+    [
+        (Role.ADMIN, Role.MODERATOR, True),    # строго ниже — можно
+        (Role.ADMIN, Role.ADMIN, False),       # равный — нельзя
+        (Role.ADMIN, Role.OWNER, False),       # выше актора — нельзя
+        (Role.OWNER, Role.ADMIN, True),        # owner может всё, что ниже себя
+        (Role.OWNER, Role.MODERATOR, True),
+        (Role.MODERATOR, Role.ADMIN, False),   # ниже не трогает выше
+        (Role.USER, Role.USER, False),         # user не может вообще
+        (Role.USER, Role.MODERATOR, False),
+    ],
+)
+def test_strictly_higher_role_required(check, actor: Role, target: Role, allowed: bool) -> None:
+    assert check(actor, target) is allowed
