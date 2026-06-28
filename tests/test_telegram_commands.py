@@ -105,6 +105,16 @@ async def test_help_shows_moderator_commands_to_moderator() -> None:
     assert "/ban" in help_text
 
 
+def test_help_shows_role_when_passed() -> None:
+    text = render_help([], Role.MODERATOR)
+    assert "moderator" in text.lower()
+
+
+def test_help_no_role_header_when_role_omitted() -> None:
+    text = render_help([])
+    assert "роль" not in text.lower()
+
+
 def test_command_menu_filters_by_role() -> None:
     user_menu = command_menu(ALL_COMMAND_METAS, Role.USER)
     mod_menu = command_menu(ALL_COMMAND_METAS, Role.MODERATOR)

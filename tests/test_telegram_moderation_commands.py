@@ -12,6 +12,7 @@ from aiogram.types import Chat, Message, User
 
 from lora_bridge.transports.telegram.commands.moderation import (
     MODERATION_COMMAND_METAS,
+    make_audit_callbacks,
     make_moderation_commands,
     resolve_target,
 )
@@ -123,6 +124,25 @@ async def test_set_alias_enforces_length(store: ModerationStore) -> None:
     assert s.alias is None
     mock_answer.assert_awaited_once()
     assert "5" in mock_answer.await_args.args[0]
+
+
+async def test_audit_noop_callback_answers_immediately(store: ModerationStore) -> None:
+    """Нажатие на нефункциональные кнопки /audit не должно оставлять лоадер."""
+    callbacks = {cb.prefix: cb for cb in make_audit_callbacks(store)}
+    cb = callbacks["audit:"]
+    answered = False
+
+    async def fake_answer(text: str = "") -> None:
+        nonlocal answered
+        answered = True
+
+    from unittest.mock import MagicMock
+    query = MagicMock()
+    query.data = "audit:noop"
+    query.answer = fake_answer
+    query.from_user = None
+    await cb.handler(query)
+    assert answered, "query.answer() не вызван — лоадер будет висеть вечно"
 
 
 async def test_set_alias_sets_for_self(store: ModerationStore) -> None:

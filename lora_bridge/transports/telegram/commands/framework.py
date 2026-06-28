@@ -73,10 +73,13 @@ class CallbackSpec:
     min_role: "Role"
 
 
-def render_help(commands: list[CommandMeta]) -> str:
+def render_help(commands: list[CommandMeta], role: "Role | None" = None) -> str:
     """Текст ``/help`` из переданного (уже отфильтрованного) реестра."""
     lines = [f"/{spec.name} — {spec.description}" for spec in commands]
-    return "Доступные команды:\n" + "\n".join(lines)
+    header = "Доступные команды:"
+    if role is not None:
+        header = f"Ваша роль: <b>{role.name.lower()}</b>\n\n" + header
+    return header + "\n" + "\n".join(lines)
 
 
 def command_menu(commands: list[CommandMeta], role: "Role") -> list[BotCommand]:

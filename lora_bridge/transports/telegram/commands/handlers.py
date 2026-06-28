@@ -36,10 +36,13 @@ def make_basic_commands(
     """Фабрика базовых команд (ping + help) с замыканием над store."""
 
     async def _show_help(message: TgMessage) -> None:
+        if message.chat.type != "private":
+            await message.answer("Справка доступна только в личных сообщениях с ботом.")
+            return
         uid = message.from_user.id if message.from_user else 0
         role = await store.get_role(owner_id, uid)
         visible = [m for m in all_metas if m.min_role <= role]
-        await message.answer(render_help(visible), parse_mode="HTML")
+        await message.answer(render_help(visible, role), parse_mode="HTML")
 
     return [
         CommandSpec("ping", "проверка живости бота", Role.USER, _ping),

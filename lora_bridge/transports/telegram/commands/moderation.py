@@ -320,5 +320,5 @@ def make_audit_callbacks(store: "ModerationStore") -> list[CallbackSpec]:
         await query.answer()
 
     return [
-        CallbackSpec(prefix="audit:page:", handler=audit_page, min_role=Role.MODERATOR),
+        CallbackSpec(prefix="audit:", handler=audit_page, min_role=Role.MODERATOR),
     ]
