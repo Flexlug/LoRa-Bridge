@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from collections import OrderedDict
+from typing import Callable
 
 
 class TtlWindow:
@@ -10,7 +11,7 @@ class TtlWindow:
     Разделяемый примитив для TtlDedup и LoopGuard — концепции разные, механика одна.
     """
 
-    def __init__(self, ttl_seconds: float, *, _clock=time.monotonic) -> None:
+    def __init__(self, ttl_seconds: float, *, _clock: Callable[[], float] = time.monotonic) -> None:
         self._ttl = ttl_seconds
         self._clock = _clock
         self._store: OrderedDict[str, float] = OrderedDict()

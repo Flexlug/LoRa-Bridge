@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import AsyncIterator, Optional
+from typing import AsyncIterator, Callable, Optional
 
 import anyio
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
@@ -42,7 +42,7 @@ class CommitQueue:
         rate: Optional[RateSpec],
         ttl_seconds: float,
         *,
-        _clock=time.monotonic,
+        _clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._send: MemoryObjectSendStream[QueueItem]
         self._recv: MemoryObjectReceiveStream[QueueItem]

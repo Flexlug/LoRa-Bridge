@@ -7,13 +7,14 @@ LoRa может отсутствовать, поэтому окно времен
 from __future__ import annotations
 
 import time
+from typing import Callable
 
 from .ttl_window import TtlWindow
 from ..domain.models import Message
 
 
 class TtlDedup:
-    def __init__(self, ttl_seconds: float, *, _clock=time.monotonic) -> None:
+    def __init__(self, ttl_seconds: float, *, _clock: Callable[[], float] = time.monotonic) -> None:
         self._window = TtlWindow(ttl_seconds, _clock=_clock)
 
     @staticmethod

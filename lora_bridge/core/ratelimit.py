@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from typing import Callable
 
 from ..domain.models import RateSpec
 
@@ -10,7 +11,7 @@ from ..domain.models import RateSpec
 class TokenBucket:
     """Классический token-bucket: ``capacity`` токенов, долив ``capacity/window`` в сек."""
 
-    def __init__(self, spec: RateSpec, *, _clock=time.monotonic) -> None:
+    def __init__(self, spec: RateSpec, *, _clock: Callable[[], float] = time.monotonic) -> None:
         self._capacity = float(max(spec.burst, spec.msgs_per_window))
         self._refill_per_sec = spec.msgs_per_window / spec.window_seconds
         self._tokens = self._capacity
