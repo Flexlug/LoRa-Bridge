@@ -7,6 +7,7 @@ docs_dir: docs
 # но в выходной site/ копировать его не нужно — это не страница доки.
 exclude_docs: |
   gen_pages.py
+  superpowers/**
 
 theme:
   name: material

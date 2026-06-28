@@ -384,8 +384,8 @@ def emit_specs_index(*, path: str) -> None:
         "| Дата | Документ |",
         "|------|----------|",
     ]
-    for date, title, link in rows:
-        parts.append(f"| {date} | [{title}]({link}) |")
+    for date, title, _ in rows:
+        parts.append(f"| {date} | {title} |")
 
     with mkdocs_gen_files.open(path, "w") as f:
         f.write("\n".join(parts))
