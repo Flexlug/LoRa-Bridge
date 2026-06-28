@@ -16,7 +16,7 @@ import logging
 from typing import Optional
 
 from aiogram import Bot
-from aiogram.types import ReactionTypeEmoji, ReactionTypeUnion
+from aiogram.types import Message as TgMessage, ReactionTypeEmoji, ReactionTypeUnion
 
 from ...domain.models import DeliveryStatus, RejectReason
 
@@ -155,6 +155,17 @@ class ReactionFeedback:
         reaction = self._reaction_for(status, reason)
         if reaction:
             self._debouncer.schedule(key, reaction, self._bot)
+
+    async def report_disabled(self, message: "TgMessage") -> None:
+        """Реакция 🚫 на сообщение забаненного пользователя (best-effort)."""
+        try:
+            await self._bot.set_message_reaction(  # verify
+                message.chat.id,
+                message.message_id,
+                reaction=[ReactionTypeEmoji(emoji="🚫")],
+            )
+        except Exception:  # noqa: BLE001
+            pass
 
     @staticmethod
     def _reaction_for(

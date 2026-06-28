@@ -1,13 +1,16 @@
 # tests/test_telegram_moderation_store.py
+from collections.abc import AsyncGenerator
+
 import pytest
 from lora_bridge.transports.telegram.moderation.roles import Role
 from lora_bridge.transports.telegram.moderation.store import ModerationStore, UserSettings
 
 @pytest.fixture
-async def store() -> ModerationStore:
+async def store() -> AsyncGenerator[ModerationStore, None]:
     s = ModerationStore(":memory:")
     await s.start()
-    return s
+    yield s
+    await s.stop()
 
 async def test_default_role_is_user(store: ModerationStore) -> None:
     role = await store.get_role(owner_id=1, tg_id=999)

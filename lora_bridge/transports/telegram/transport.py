@@ -17,7 +17,17 @@ from typing import AsyncIterator, Optional, TYPE_CHECKING
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.types import Message as TgMessage
 
-from .commands import COMMANDS, build_command_router, command_menu
+from .commands import (
+    ALL_COMMAND_METAS,
+    build_command_router,
+    command_menu,
+    make_audit_callbacks,
+    make_basic_commands,
+    make_moderation_commands,
+)
+from .moderation.roles import Role
+from .moderation.store import ModerationStore, UserSettings
+from .moderation.transliterate import transliterate
 from .reactions import ReactionFeedback
 from ..hub import Hub
 from ...domain.ports import Transport
@@ -63,14 +73,43 @@ class TelegramTransport(Transport):
 
     _poll_task: asyncio.Task[None] | None = None
 
-    def __init__(self, transport_id: str, config: TelegramMessengerConfig) -> None:
+    def __init__(
+        self,
+        transport_id: str,
+        config: "TelegramMessengerConfig",
+        *,
+        _store: Optional[ModerationStore] = None,
+    ) -> None:
         self.id = transport_id
         self._hub = Hub()
         self._bot = Bot(config.token)
         self._dp = Dispatcher()
+        self._store: Optional[ModerationStore] = None
+        self._owner_id: int = 0
+
+        if config.commands is not None:
+            owner_id = config.commands.owner_id
+            self._owner_id = owner_id
+            if _store is not None:
+                self._store = _store
+            else:
+                from ...settings import Settings
+                db_path = Settings.from_env().db_path
+                self._store = ModerationStore(db_path)
+            all_specs = (
+                make_basic_commands(self._store, owner_id, ALL_COMMAND_METAS)
+                + make_moderation_commands(self._store, config.commands)
+            )
+            callbacks = make_audit_callbacks(self._store)
+            self._dp.include_router(
+                build_command_router(self.id, all_specs, self._store, owner_id, callbacks)
+            )
+        else:
+            # только catchall — команды не утекают в pipeline даже без блока commands:
+            self._dp.include_router(build_command_router(self.id, []))
+
         # Порядок включения = порядок диспетча: команды перехватываются ДО bridge-хэндлера,
         # поэтому транспорт-локальные команды не доходят до on_message → не текут в pipeline.
-        self._dp.include_router(build_command_router(self.id, COMMANDS))
         bridge = Router(name=f"telegram-bridge:{self.id}")
         bridge.message.register(self.on_message, F.text)  # verify: фильтр текстовых
         self._dp.include_router(bridge)
@@ -79,7 +118,25 @@ class TelegramTransport(Transport):
     async def start(self) -> None:
         me = await self._bot.get_me()  # verify: бот доступен (sanity)
         log.info("Telegram-транспорт '%s': бот @%s (id=%d) подключён", self.id, me.username, me.id)
-        await self._bot.set_my_commands(command_menu(COMMANDS))  # verify: меню команд в Telegram
+
+        if self._store is not None:
+            await self._store.start()
+            # дефолтное меню — USER-уровень для всех
+            user_menu = command_menu(ALL_COMMAND_METAS, Role.USER)
+            await self._bot.set_my_commands(user_menu)  # verify
+            # восстановить per-user меню для privileged users из БД
+            privileged = await self._store.get_all_privileged()
+            for tg_id, role_str, last_chat_id in privileged:
+                if last_chat_id is None:
+                    continue
+                role = Role.ADMIN if role_str == "admin" else Role.MODERATOR
+                role_menu = command_menu(ALL_COMMAND_METAS, role)
+                from aiogram.types import BotCommandScopeChatMember
+                await self._bot.set_my_commands(  # verify
+                    role_menu,
+                    scope=BotCommandScopeChatMember(chat_id=last_chat_id, user_id=tg_id),
+                )
+
         self._poll_task = asyncio.create_task(
             self._dp.start_polling(self._bot, handle_signals=False)  # verify
         )
@@ -88,23 +145,45 @@ class TelegramTransport(Transport):
         await self._dp.stop_polling()  # verify
         if self._poll_task is not None:
             self._poll_task.cancel()
+        if self._store is not None:
+            await self._store.stop()
         await self._bot.close()  # verify
 
     async def on_message(self, message: TgMessage) -> None:
-        await self._hub.publish(self.normalize(message))
+        user_id = message.from_user.id if message.from_user else None
+        if user_id is not None and self._store is not None:
+            if await self._store.is_disabled(user_id):
+                await self._reactions.report_disabled(message)
+                return
+            settings: Optional[UserSettings] = await self._store.get_user_settings(user_id)
+        else:
+            settings = None
+        await self._hub.publish(self.normalize(message, settings))
 
-    def normalize(self, message: TgMessage) -> Message:
+    def normalize(
+        self, message: TgMessage, settings: Optional[UserSettings] = None
+    ) -> Message:
         thread = message.message_thread_id
         chat_id = str(message.chat.id)
         user = message.from_user
+        display_name = user.full_name if user else "unknown"
+        text = message.text or ""
+
+        if settings is not None:
+            if settings.alias:
+                display_name = settings.alias
+            if settings.transliter:
+                text = transliterate(text)
+                display_name = transliterate(display_name)
+
         return Message(
             id=str(message.message_id),
             source=ChannelRef(self.id, messenger_channel(chat_id, str(thread) if thread else None)),
             sender=Identity(
-                display_name=(user.full_name if user else "unknown"),
+                display_name=display_name,
                 transport_uid=str(user.id) if user else "0",
             ),
-            text=message.text or "",
+            text=text,
         )
 
     async def send(self, target: ChannelRef, msg: Message) -> SendResult:
