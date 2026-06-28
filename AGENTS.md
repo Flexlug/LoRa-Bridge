@@ -23,7 +23,7 @@ Read and apply the rules under `.agents/rules/` before changing code:
 файлы (feature, bugfix, рефакторинг, правка тестов).
 
 - В начале такой задачи заходи в worktree через нативный инструмент харнесса
-  (`EnterWorktree`); если его нет — `git worktree add ../LoRa-Bridge-<slug> <branch>`.
+  (`EnterWorktree`); если его нет — `git worktree add .claude/worktrees/<slug> <branch>`.
   По завершении возвращайся обратно (`ExitWorktree`); пустой worktree чистится сам.
 - **Исключения** (остаёмся в текущем дереве): вопросы и объяснения, read-only
   разведка, операции только с beads, правки только документации.
