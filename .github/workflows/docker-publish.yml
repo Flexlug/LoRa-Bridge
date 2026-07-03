@@ -7,6 +7,8 @@ on:
 
 env:
   REGISTRY: ghcr.io
+  YC_REGISTRY: cr.yandex
+  YC_REGISTRY_ID: crpdjbirs0ru9gdbo2l8
 
 jobs:
   publish:
@@ -30,11 +32,27 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata
+      - name: Log in to Yandex Cloud Container Registry
+        uses: yc-actions/yc-cr-login@v1
+        with:
+          yc-sa-json-credentials: ${{ secrets.YC_SA_JSON_CREDENTIALS }}
+
+      - name: Extract metadata (GHCR)
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=main-,enable={{is_default_branch}}
+
+      - name: Extract metadata (Yandex Cloud CR)
+        id: meta_yc
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.YC_REGISTRY }}/${{ env.YC_REGISTRY_ID }}/${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=semver,pattern={{version}}
@@ -46,7 +64,9 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: |
+            ${{ steps.meta.outputs.tags }}
+            ${{ steps.meta_yc.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
