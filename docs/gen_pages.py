@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import inspect
 import typing
-from pathlib import Path as _Path
 from typing import Any, Union, get_args, get_origin
 
 import mkdocs_gen_files
@@ -77,14 +76,8 @@ messengers:
 
 ROOMS_INTRO = """
 Секция `rooms:` — **массив** логических комнат. Комната связывает один
-LoRa-эндпоинт (`lora` поле) с набором подписчиков (`subscribers`), между
-которыми зеркалятся сообщения. Подписчиком может быть чат мессенджера или
-другой LoRa-эндпоинт (LoRa↔LoRa relay).
-
-Допустимые формы:
-
-* **1 LoRa + N мессенджеров** — стандартный режим моста.
-* **2 LoRa + 0 мессенджеров** — рилей между двумя радиосетями.
+LoRa-эндпоинт (`lora` поле) с набором подписчиков-чатов мессенджеров
+(`subscribers`), между которыми зеркалятся сообщения.
 """.strip()
 
 ROOMS_EXAMPLE = """
@@ -133,7 +126,6 @@ def main() -> None:
         path="reference/commands.md",
         title="Команды Telegram-бота",
     )
-    emit_specs_index(path="contributing/design-specs.md")
 
 
 def emit_section_page(
@@ -351,39 +343,6 @@ def emit_commands_page(*, path: str, title: str) -> None:
     ]
     for meta in ALL_COMMAND_METAS:
         parts.append(f"| `/{meta.name}` | {meta.min_role.name.lower()} | {meta.description} |")
-
-    with mkdocs_gen_files.open(path, "w") as f:
-        f.write("\n".join(parts))
-
-
-def emit_specs_index(*, path: str) -> None:
-    specs_dir = _Path(__file__).resolve().parent / "superpowers" / "specs"
-    if not specs_dir.exists():
-        return
-
-    rows: list[tuple[str, str, str]] = []
-    for spec_file in sorted(specs_dir.glob("*.md")):
-        date = spec_file.name[:10]
-        title = spec_file.name
-        try:
-            first_line = spec_file.read_text(encoding="utf-8").splitlines()[0]
-            if first_line.startswith("# "):
-                title = first_line[2:].strip()
-        except (IndexError, OSError):
-            pass
-        rel_path = f"../../superpowers/specs/{spec_file.name}"
-        rows.append((date, title, rel_path))
-
-    parts = [
-        "# Дизайн-спеки",
-        "",
-        "Зафиксированные дизайн-решения. Генерируется автоматически — новый спек появляется здесь после добавления файла в `docs/superpowers/specs/`.",
-        "",
-        "| Дата | Документ |",
-        "|------|----------|",
-    ]
-    for date, title, _ in rows:
-        parts.append(f"| {date} | {title} |")
 
     with mkdocs_gen_files.open(path, "w") as f:
         f.write("\n".join(parts))

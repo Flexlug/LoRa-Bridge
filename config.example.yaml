@@ -1,61 +1,36 @@
-# Пример конфигурации LoRa-Bridge.
-# Скопируйте в config.yaml и подставьте секреты через ${ENV_VAR}.
-# Подробности модели — docs/ARCHITECTURE.md (§5.1 типы эндпоинтов, §12 конфиг).
+# Пример конфигурации LoRa-Bridge — минимальный набор полей для запуска.
+# Скопируйте в config.yaml и замените под своё устройство и бота.
+#
+# Секреты можно писать как есть или через ${ENV_VAR} — обе формы работают.
+# Полный справочник всех полей (private/room_server-каналы, rate-limit,
+# команды бота и т.д.) — docs/config/index.md.
+# Как найти device_id/port/host/address под своё устройство — docs/install/meshcore.md.
 
-lora:                                # МАССИВ физических LoRa-нод
+lora:
   - id: meshcore-1
-    type: meshcore                   # тип ноды/прошивки (meshcore | meshtastic*) — фундамент под LoRa↔LoRa
-    # connection: usb(VID:PID) | serial(port) | tcp(host:port) | ble(address)
     connection:
+      # usb | serial | tcp | ble — см. docs/install/meshcore.md
       type: usb
-      device_id: "0333:0303"
-    # endpoints — это MAP: ключ = имя эндпоинта (на него ссылается rooms[].lora.endpoint).
-    # type — термин из MeshCore-приложения; механика (слоты, PSK, login, ACK) — в адаптере, §5.1.
+      device_id: "0403:6015" # VID:PID устройства, из lsusb / Device Manager
     endpoints:
-      general:                                       # Public-канал MeshCore (общий PSK), flood без ACK
-        type: public
-        channel_name: "General"                      # имя канала из вкладки Channels в MeshCore
-        read_only: true                               # постинг из мессенджера запрещён (RX не затронут)
-    policies:                        # политики САМОЙ ноды (радио-специфичны)
-      override_oldest_contact_on_full: true
-      override_oldest_channel_on_full: true
-      egress_rate:                                   # под duty cycle
+      general:
+        type: public # публичный канал MeshCore, без секрета
+        channel_name: "General" # имя канала из вкладки Channels в MeshCore
+        read_only: true # постинг из мессенджера запрещён (RX не затронут)
+    policies:
+      egress_rate:
         msgs_per_window: 6
         window_seconds: 60
-      queue_ttl_seconds: 45                          # admission TTL
-      commit_timeout_seconds: 30                     # таймаут ACK (room_server) / send (public/private)
-      reconnect_backoff:
-        base: 2
-        max: 60
-        jitter: true
-      dedup_ttl_seconds: 300
-      drop_notice_window_seconds: 60
-      label:
-        include_type: auto           # auto | always | never (auto: тег если >1 мессенджера в комнате)
-        max_nick_bytes: 24           # ник усекаем при необходимости; ТЕКСТ — никогда (AD-11)
-        on_oversize: reject          # reject (по умолчанию) — НЕ truncate
 
 messengers:
   - id: telegram-main
-    kind: telegram        # kind → тег источника в префиксе LoRa: "TG"
-    tag: "TG"             # переопределение тега (по умолчанию из kind)
-    token: ${TG_BOT_TOKEN}
-    # privacy mode у бота ДОЛЖЕН быть отключён (BotFather /setprivacy → Disable)
-    # commands:                  # опционально; без блока — командный роутер не включается
-    #   owner_id: 123456789      # Telegram user ID владельца (роль OWNER)
-    #   alias_max_chars: 16      # максимальная длина псевдонима (по умолчанию 16)
+    kind: telegram
+    token: ${TG_BOT_TOKEN} # token от @BotFather
 
 rooms:
-  # 1 LoRa + N мессенджеров. general read_only → постинг из Telegram отклоняется,
-  # RX из эфира по-прежнему зеркалится в оба чата.
-  - lora:                                # node-qualified ссылка
+  - lora:
       node: meshcore-1
       endpoint: general
     subscribers:
-      # topic указан → берём/шлём ТОЛЬКО эту тему
       - transport: telegram-main
-        chat: "-1001234567890"
-        topic: "42"
-      # topic опущен → работаем с General (и только с ним, не со всеми темами)
-      - transport: telegram-main
-        chat: "-1009999999999"
+        chat: "-1001234567890" # chat_id чата, см. docs/install/telegram.md
