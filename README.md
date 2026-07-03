@@ -1,5 +1,12 @@
 # LoRa-Bridge
 
+[![CI](https://github.com/Flexlug/LoRa-Bridge/actions/workflows/ci.yml/badge.svg)](https://github.com/Flexlug/LoRa-Bridge/actions/workflows/ci.yml)
+[![Docs](https://github.com/Flexlug/LoRa-Bridge/actions/workflows/docs.yml/badge.svg)](https://github.com/Flexlug/LoRa-Bridge/actions/workflows/docs.yml)
+[![Docker Publish](https://github.com/Flexlug/LoRa-Bridge/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/Flexlug/LoRa-Bridge/actions/workflows/docker-publish.yml)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](pyproject.toml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+
 Двунаправленный мост между **LoRa**-сетями (MeshCore, …) и мессенджерами (Telegram, …):
 сообщения из мессенджера уходят в эфир, а принятое из эфира зеркалится подписчикам.
 Поддерживает несколько физических LoRa-нод, каждую со своими каналами, а также
