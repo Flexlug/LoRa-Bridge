@@ -22,6 +22,7 @@ from lora_bridge.domain.models import (
     LabelFormat,
     Message,
     RateSpec,
+    RejectReason,
 )
 from tests.helpers.fakes import FakeTransport, LORA_CAPS, MSG_CAPS
 
@@ -53,7 +54,10 @@ def _msg(transport_id: str, channel: str, text: str, mid: str = "m1") -> Message
     )
 
 
-async def _build(routes, nodes_transports, messengers, *, capacity=16, rate=RateSpec(100, 60)):
+async def _build(
+    routes, nodes_transports, messengers, *,
+    capacity=16, rate=RateSpec(100, 60), readonly_endpoints=frozenset(),
+):
     journal = SqliteJournal(":memory:")
     await journal.start()
     _OPEN_JOURNALS.append(journal)
@@ -84,6 +88,7 @@ async def _build(routes, nodes_transports, messengers, *, capacity=16, rate=Rate
         rooms=RoomRegistry(routes),
         status=StatusDispatcher(all_transports),
         journal=journal,
+        readonly_endpoints=readonly_endpoints,
     )
     return bridge, nodes, notices
 
@@ -159,6 +164,48 @@ async def test_too_long_rejected_with_notice():
     await nodes["n1"].queue.close_input()
     await bridge.build_worker(nodes["n1"]).run()
     assert lora.sent == []
+
+
+async def test_readonly_endpoint_rejects_messenger_post():
+    lora = FakeTransport("n1", LORA_CAPS)
+    m1 = FakeTransport("tg", MSG_CAPS)
+    room = RoomRoute(members=(LoraMember("n1", "emergency"), MessengerMember("tg", "-100", None)))
+    readonly = frozenset({ChannelRef("n1", "emergency")})
+    bridge, nodes, notices = await _build(
+        [room], {"n1": lora}, {"tg": m1}, readonly_endpoints=readonly
+    )
+
+    src = _msg("tg", "-100", "привет")
+    await bridge.admit(src)
+
+    assert m1.statuses[-1][1] == DeliveryStatus.REJECTED
+    assert m1.statuses[-1][2] == RejectReason.READONLY
+    assert notices  # уведомление о дропе ушло
+
+    # в очередь ничего не попало — до эфира не дошло
+    await nodes["n1"].queue.close_input()
+    await bridge.build_worker(nodes["n1"]).run()
+    assert lora.sent == []
+
+
+async def test_readonly_flag_does_not_affect_rx_from_lora():
+    """read_only блокирует только постинг из мессенджера; RX из эндпоинта миррорится как обычно."""
+    lora = FakeTransport("n1", LORA_CAPS)
+    m1 = FakeTransport("tg", MSG_CAPS)
+    room = RoomRoute(members=(LoraMember("n1", "emergency"), MessengerMember("tg", "-100", None)))
+    readonly = frozenset({ChannelRef("n1", "emergency")})
+    bridge, _, _ = await _build([room], {"n1": lora}, {"tg": m1}, readonly_endpoints=readonly)
+
+    incoming = Message(
+        id="l1",
+        source=ChannelRef("n1", "emergency"),
+        sender=Identity(display_name="Bob", transport_uid=LORA_SENDER_UID),
+        text="из эфира",
+    )
+    await bridge.route_from_lora(incoming)
+
+    assert len(m1.sent) == 1
+    assert "из эфира" in m1.sent[0][1].text
 
 
 async def test_rate_limit_rejected():

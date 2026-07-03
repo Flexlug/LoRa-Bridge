@@ -20,6 +20,15 @@ class EndpointBase(BaseModel):
     если новый тип забыли дописать в union (см. ``tests/test_config_schema.py``).
     """
 
+    read_only: bool = Field(
+        default=False,
+        description=(
+            "Если true — постинг из мессенджера в этот эндпоинт запрещён на "
+            "уровне моста: сообщение отклоняется (REJECTED/READONLY), в эфир "
+            "не уходит. На приём (RX) из этого эндпоинта не влияет."
+        ),
+    )
+
 
 class PublicEndpoint(EndpointBase):
     """Публичный канал MeshCore (общий PSK, flood без ACK).

@@ -89,6 +89,8 @@ class DropNotifier:
             base = "сообщение слишком длинное"
         elif reason == RejectReason.TTL_EXPIRED:
             base = "сообщение устарело в очереди"
+        elif reason == RejectReason.READONLY:
+            base = "эндпоинт доступен только для чтения"
         else:
             raise ValueError(f"неизвестная причина: {reason!r}")
         suffix = f" ({detail})" if detail else ""

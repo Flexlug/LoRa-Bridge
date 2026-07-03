@@ -32,6 +32,7 @@ REJECT_EMOJI: dict[RejectReason, str] = {
     RejectReason.TOO_LONG: "🤨",    # сообщение не влезло
     RejectReason.RATE_LIMIT: "🥱",  # эфир перегружен
     RejectReason.TTL_EXPIRED: "😴", # протухло в очереди
+    RejectReason.READONLY: "👎",    # эндпоинт read-only, постинг запрещён
 }
 
 # Задержка перед простановкой реакции (секунды).

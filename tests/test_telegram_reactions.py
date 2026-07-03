@@ -121,6 +121,15 @@ async def test_rejected_uses_reject_emoji() -> None:
     assert kwargs["reaction"][0].emoji == REJECT_EMOJI[RejectReason.TOO_LONG]
 
 
+async def test_readonly_rejected_uses_readonly_emoji() -> None:
+    bot = _bot()
+    fb = ReactionFeedback(bot, delay=0.01)
+    await fb.report(111, "5", DeliveryStatus.REJECTED, RejectReason.READONLY)
+    await asyncio.sleep(0.05)
+    _, kwargs = bot.set_message_reaction.call_args
+    assert kwargs["reaction"][0].emoji == REJECT_EMOJI[RejectReason.READONLY]
+
+
 async def test_sent_clears_applied_reaction() -> None:
     bot = _bot()
     fb = ReactionFeedback(bot, delay=0.01)

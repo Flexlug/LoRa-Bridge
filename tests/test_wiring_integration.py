@@ -24,7 +24,13 @@ from lora_bridge.core.status import StatusDispatcher
 from lora_bridge.domain.models import (
     BRIDGE_TRANSPORT_UID, ChannelRef, DeliveryStatus, Identity, Message, RejectReason,
 )
-from lora_bridge.wiring import build_lora_nodes, build_messengers, build_notice_sink, build_rooms
+from lora_bridge.wiring import (
+    build_lora_nodes,
+    build_messengers,
+    build_notice_sink,
+    build_readonly_endpoints,
+    build_rooms,
+)
 from tests.helpers.fakes import FakeTransport, LORA_CAPS, MSG_CAPS
 
 _NOTICE_SENDER = Identity(display_name="bridge", transport_uid=BRIDGE_TRANSPORT_UID)
@@ -223,6 +229,36 @@ rooms:
         chat: "-200"
 """
 
+_CFG_READONLY = """
+lora:
+  - id: mc-1
+    type: meshcore
+    connection:
+      type: tcp
+      host: "127.0.0.1"
+      port: 5000
+    endpoints:
+      general:
+        type: public
+        channel_name: "General"
+        read_only: true
+    policies:
+      egress_rate:
+        msgs_per_window: 6
+        window_seconds: 60
+messengers:
+  - id: tg
+    kind: telegram
+    token: "123:ABC"
+rooms:
+  - lora:
+      node: mc-1
+      endpoint: general
+    subscribers:
+      - transport: tg
+        chat: "-100"
+"""
+
 _CFG_LORA_TO_LORA = """
 lora:
   - id: mc-1
@@ -307,6 +343,7 @@ async def assemble(yaml_text: str) -> tuple[Bridge, dict, SqliteJournal]:
         rooms=build_rooms(cfg),
         status=status,
         journal=journal,
+        readonly_endpoints=build_readonly_endpoints(cfg),
     )
     return bridge, lora.runtimes, journal
 
@@ -490,6 +527,26 @@ async def test_too_long_message_rejected(wire_fakes):
     assert lora_fakes["mc-1"].sent == []
     rejected = [s for s in tg_fakes["tg"].statuses if s[1] == DeliveryStatus.REJECTED]
     assert rejected and rejected[0][2] == RejectReason.TOO_LONG
+
+
+async def test_read_only_endpoint_from_config_rejects_post(wire_fakes):
+    """endpoints.<name>.read_only: true в YAML → постинг из мессенджера отклоняется с READONLY."""
+    lora_fakes, tg_fakes = wire_fakes
+    bridge, runtimes, journal = await assemble(_CFG_READONLY)
+
+    await bridge.admit(
+        Message(
+            id="m1",
+            source=ChannelRef("tg", "-100"),
+            sender=Identity(display_name="Alex", transport_uid="u1"),
+            text="привет",
+        )
+    )
+    await journal.stop()
+
+    assert lora_fakes["mc-1"].sent == []
+    rejected = [s for s in tg_fakes["tg"].statuses if s[1] == DeliveryStatus.REJECTED]
+    assert rejected and rejected[0][2] == RejectReason.READONLY
 
 
 async def test_short_ttl_from_config_expires_message(wire_fakes):

@@ -18,7 +18,13 @@ from .core.queue import QueueItem
 from .core.status import StatusDispatcher
 from .domain.models import BRIDGE_TRANSPORT_UID, ChannelRef, DeliveryStatus, Identity, Message
 from .settings import Settings
-from .wiring import build_lora_nodes, build_messengers, build_notice_sink, build_rooms
+from .wiring import (
+    build_lora_nodes,
+    build_messengers,
+    build_notice_sink,
+    build_readonly_endpoints,
+    build_rooms,
+)
 
 log = logging.getLogger(__name__)
 
@@ -70,6 +76,7 @@ async def run(config: AppConfig, settings: Settings) -> None:
         rooms=build_rooms(config),
         status=status,
         journal=journal,
+        readonly_endpoints=build_readonly_endpoints(config),
     )
     try:
         async with anyio.create_task_group() as tg:

@@ -61,6 +61,7 @@ class RejectReason(Enum):
     TOO_LONG = "too_long"  # префикс+текст > max_text_bytes (НЕ усекаем)
     RATE_LIMIT = "rate_limit"  # эфир перегружен (token-bucket / очередь полна)
     TTL_EXPIRED = "ttl_expired"  # протухло в очереди до отправки
+    READONLY = "readonly"  # эндпоинт помечен read_only в конфиге — постинг запрещён
 
 
 @dataclass(frozen=True)
