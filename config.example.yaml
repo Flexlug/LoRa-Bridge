@@ -15,6 +15,7 @@ lora:                                # МАССИВ физических LoRa-н
       general:                                       # Public-канал MeshCore (общий PSK), flood без ACK
         type: public
         channel_name: "General"                      # имя канала из вкладки Channels в MeshCore
+        read_only: true                               # постинг из мессенджера запрещён (RX не затронут)
       emergency:                                     # Channel со своим secret (приватный), flood без ACK
         type: private
         channel_name: "Emergency"                    # имя канала из вкладки Channels в MeshCore
