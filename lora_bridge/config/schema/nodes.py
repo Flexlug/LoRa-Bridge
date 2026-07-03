@@ -22,12 +22,7 @@ class MeshCoreNode(BaseModel):
     Соответствует элементу массива ``lora:`` в YAML.
     """
 
-    id: NodeId = Field(
-        description=(
-            "Уникальный id ноды. На него ссылается ``rooms[].lora.node`` (и "
-            "``rooms[].subscribers[].lora.node`` при LoRa↔LoRa)."
-        )
-    )
+    id: NodeId = Field(description="Уникальный id ноды. На него ссылается ``rooms[].lora.node``.")
     type: Literal["meshcore"] = Field(
         default="meshcore",
         description=(

@@ -46,11 +46,11 @@ class MessengerSubscriber(BaseModel):
 
 
 class LoraSubscriber(BaseModel):
-    """LoRa-эндпоинт как подписчик комнаты (LoRa↔LoRa relay)."""
+    """LoRa-эндпоинт как подписчик комнаты."""
 
     model_config = ConfigDict(extra="forbid")
 
-    lora: LoraRef = Field(description="LoRa-эндпоинт-получатель для рилея.")
+    lora: LoraRef = Field(description="LoRa-эндпоинт-получатель.")
 
 
 Subscriber = Union[MessengerSubscriber, LoraSubscriber]
@@ -64,21 +64,12 @@ Smart union без явного дискриминатора: pydantic выби�
 class RoomConfig(BaseModel):
     """Логическая комната — связывает один LoRa-эндпоинт с подписчиками.
 
-    Допустимые формы:
-
-    * ``1 LoRa + N мессенджеров`` — сообщения из LoRa зеркалятся подписчикам,
-      из мессенджеров уходят в эфир.
-    * ``2 LoRa + 0 мессенджеров`` — рилей между двумя радиосетями.
-
-    Смешанная форма (несколько LoRa-подписчиков ИЛИ LoRa + мессенджер) запрещена.
+    Сообщения из LoRa зеркалятся подписчикам, из мессенджеров уходят в эфир.
     """
 
     lora: LoraRef = Field(description="Первичный LoRa-эндпоинт комнаты.")
     subscribers: list[Subscriber] = Field(
-        description=(
-            "Подписчики, между которыми зеркалятся сообщения. Допустимые формы: "
-            "≥1 мессенджер либо ровно один LoRa-подписчик (для LoRa↔LoRa)."
-        )
+        description="Подписчики, между которыми зеркалятся сообщения."
     )
 
     @model_validator(mode="after")

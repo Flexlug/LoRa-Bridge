@@ -8,6 +8,7 @@ docs_dir: docs
 exclude_docs: |
   gen_pages.py
   superpowers/**
+  ARCHITECTURE.md
 
 theme:
   name: material
@@ -70,9 +71,6 @@ nav:
       - "Справочник: lora": config/lora.md
       - "Справочник: messengers": config/messengers.md
       - "Справочник: rooms": config/rooms.md
+      - Команды бота: reference/commands.md
   - Для разработчиков:
       - Обзор: contributing/index.md
-      - Архитектура: ARCHITECTURE.md
-      - Дизайн-спеки: contributing/design-specs.md
-  - Справочник:
-      - Команды бота: reference/commands.md

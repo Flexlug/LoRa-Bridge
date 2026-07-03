@@ -142,13 +142,6 @@ def test_commands_page_emitted(emitted):
     assert "moderator" in page.lower()
 
 
-def test_specs_index_emitted(emitted):
-    assert "contributing/design-specs.md" in emitted
-    idx = emitted["contributing/design-specs.md"]
-    assert "2026-06-28" in idx
-    assert "Telegram" in idx
-
-
 def test_commands_page_shows_all_roles(emitted):
     page = emitted["reference/commands.md"]
     for role in ("user", "moderator", "admin"):
