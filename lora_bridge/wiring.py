@@ -116,6 +116,16 @@ def build_lora_nodes(config: AppConfig, notice_sink: NotifySink) -> LoraNodes:
     return LoraNodes(transports, runtimes)
 
 
+def build_readonly_endpoints(config: AppConfig) -> frozenset[ChannelRef]:
+    """Эндпоинты с ``read_only: true`` в конфиге — постинг из мессенджера в них запрещён."""
+    return frozenset(
+        ChannelRef(node_cfg.id, name)
+        for node_cfg in config.lora
+        for name, endpoint in node_cfg.endpoints.items()
+        if endpoint.read_only
+    )
+
+
 def build_notice_sink(messenger_transports: dict[str, Transport], sender: Identity) -> NotifySink:
     async def notice_sink(ref: ChannelRef, text: str) -> None:
         transport = messenger_transports.get(ref.transport_id)

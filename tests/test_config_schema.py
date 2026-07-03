@@ -115,6 +115,37 @@ def test_all_endpoint_types_valid(ep):
 
 
 # ---------------------------------------------------------------------------
+# Endpoint — read_only (LoRa-Bridge-92i)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "ep",
+    [
+        {"type": "public", "channel_name": "General"},
+        {"type": "private", "channel_name": "Ops", "secret": _PSK},
+        {"type": "room_server", "pubkey": "abcdef123"},
+    ],
+)
+def test_read_only_defaults_to_false(ep):
+    node = MeshCoreNode.model_validate(_node(_TCP, {"ch": ep}))
+    assert node.endpoints["ch"].read_only is False
+
+
+@pytest.mark.parametrize(
+    "ep",
+    [
+        {"type": "public", "channel_name": "General", "read_only": True},
+        {"type": "private", "channel_name": "Ops", "secret": _PSK, "read_only": True},
+        {"type": "room_server", "pubkey": "abcdef123", "read_only": True},
+    ],
+)
+def test_read_only_can_be_set_on_all_endpoint_types(ep):
+    node = MeshCoreNode.model_validate(_node(_TCP, {"ch": ep}))
+    assert node.endpoints["ch"].read_only is True
+
+
+# ---------------------------------------------------------------------------
 # Endpoint — невалидные входы
 # ---------------------------------------------------------------------------
 

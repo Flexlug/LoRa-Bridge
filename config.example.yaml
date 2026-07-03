@@ -16,6 +16,7 @@ lora:
       general:
         type: public # публичный канал MeshCore, без секрета
         channel_name: "General" # имя канала из вкладки Channels в MeshCore
+        read_only: true # постинг из мессенджера запрещён (RX не затронут)
     policies:
       egress_rate:
         msgs_per_window: 6

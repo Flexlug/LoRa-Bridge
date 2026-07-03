@@ -71,6 +71,7 @@ class Bridge:
         status: StatusDispatcher,
         journal: OutboundJournal,
         admission_policy: Optional[AdmissionPolicy] = None,
+        readonly_endpoints: frozenset[ChannelRef] = frozenset(),
     ) -> None:
         self._nodes = nodes
         self._messengers = messengers
@@ -78,6 +79,7 @@ class Bridge:
         self._status = status
         self._journal = journal
         self._admission_policy = admission_policy
+        self._readonly_endpoints = readonly_endpoints
 
     # --- жизненный цикл -------------------------------------------------------
 
@@ -148,6 +150,10 @@ class Bridge:
         if not targets:  # форма «1 LoRa + N msg» гарантирует один
             return
         target = targets[0]
+
+        if target.ref in self._readonly_endpoints:  # эндпоинт помечен read_only в конфиге
+            await self.reject(msg.source, msg.id, RejectReason.READONLY, node_id=target.node_id)
+            return
 
         if self._admission_policy is not None:
             reason = await self._admission_policy.check(msg)
