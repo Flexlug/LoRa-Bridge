@@ -16,14 +16,6 @@ lora:                                # МАССИВ физических LoRa-н
         type: public
         channel_name: "General"                      # имя канала из вкладки Channels в MeshCore
         read_only: true                               # постинг из мессенджера запрещён (RX не затронут)
-      emergency:                                     # Channel со своим secret (приватный), flood без ACK
-        type: private
-        channel_name: "Emergency"                    # имя канала из вкладки Channels в MeshCore
-        secret: ${MC_EMERGENCY_SECRET}
-      ops:                                           # Room Server: direct + login, реальный ACK + backfill
-        type: room_server
-        pubkey: "a1b2c3d4…"
-        password: ${MC_OPS_PW}                       # guest-пароль (пусто → read-only)
     policies:                        # политики САМОЙ ноды (радио-специфичны)
       override_oldest_contact_on_full: true
       override_oldest_channel_on_full: true
@@ -43,22 +35,6 @@ lora:                                # МАССИВ физических LoRa-н
         max_nick_bytes: 24           # ник усекаем при необходимости; ТЕКСТ — никогда (AD-11)
         on_oversize: reject          # reject (по умолчанию) — НЕ truncate
 
-  # Вторая нода — другой радиоузел/регион; здесь же демонстрируем LoRa↔LoRa.
-  - id: meshcore-2
-    type: meshcore
-    connection:
-      type: tcp
-      host: 127.0.0.1
-      port: 5000
-    endpoints:
-      relay:
-        type: public
-        channel_name: "General"
-    policies:
-      egress_rate:
-        msgs_per_window: 6
-        window_seconds: 60
-
 messengers:
   - id: telegram-main
     kind: telegram        # kind → тег источника в префиксе LoRa: "TG"
@@ -70,10 +46,11 @@ messengers:
     #   alias_max_chars: 16      # максимальная длина псевдонима (по умолчанию 16)
 
 rooms:
-  # Вариант 1: 1 LoRa + N мессенджеров
+  # 1 LoRa + N мессенджеров. general read_only → постинг из Telegram отклоняется,
+  # RX из эфира по-прежнему зеркалится в оба чата.
   - lora:                                # node-qualified ссылка
       node: meshcore-1
-      endpoint: emergency
+      endpoint: general
     subscribers:
       # topic указан → берём/шлём ТОЛЬКО эту тему
       - transport: telegram-main
@@ -82,13 +59,3 @@ rooms:
       # topic опущен → работаем с General (и только с ним, не со всеми темами)
       - transport: telegram-main
         chat: "-1009999999999"
-
-  # Вариант 2: 2 LoRa, 0 мессенджеров (LoRa↔LoRa) — §12.1.
-  # Эндпоинт другой ноды становится подписчиком; relay идёт через commit-очередь цели.
-  - lora:
-      node: meshcore-1
-      endpoint: general
-    subscribers:
-      - lora:
-          node: meshcore-2
-          endpoint: relay
