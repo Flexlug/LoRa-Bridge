@@ -42,6 +42,14 @@ class TelegramCommandsConfig(BaseModel):
         default=16,
         description="Максимальная длина псевдонима пользователя.",
     )
+    require_alias: bool = Field(
+        default=True,
+        description=(
+            "Обязательность alias для бриджинга. Пока пользователь не поставит себе "
+            "alias через /set_alias, его сообщения не публикуются в LoRa (реакция 🪪 "
+            "+ самоудаляющееся напоминание). Действует для всех ролей без исключений."
+        ),
+    )
 
 
 class TelegramMessengerConfig(BaseMessengerConfig):
