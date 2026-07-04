@@ -39,8 +39,16 @@ class TelegramCommandsConfig(BaseModel):
 
     owner_id: int = Field(description="Telegram user ID владельца бота (роль OWNER).")
     alias_max_chars: int = Field(
-        default=16,
+        default=8,
         description="Максимальная длина псевдонима пользователя.",
+    )
+    require_alias: bool = Field(
+        default=True,
+        description=(
+            "Обязательность alias для бриджинга. Пока пользователь не поставит себе "
+            "alias через /set_alias, его сообщения не публикуются в LoRa (реакция 🪪 "
+            "+ самоудаляющееся напоминание). Действует для всех ролей без исключений."
+        ),
     )
 
 

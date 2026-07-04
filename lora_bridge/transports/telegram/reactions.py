@@ -18,6 +18,7 @@ from typing import Optional
 from aiogram import Bot
 from aiogram.types import Message as TgMessage, ReactionTypeEmoji, ReactionTypeUnion
 
+from .ephemeral import delete_after
 from ...domain.models import DeliveryStatus, RejectReason
 
 log = logging.getLogger(__name__)
@@ -40,6 +41,8 @@ REJECT_EMOJI: dict[RejectReason, str] = {
 # MeshCore MSG_OK для public/private каналов приходит за 0.5–1.5с;
 # 2.0с даёт запас чтобы 👀 не мелькал при нормальной работе.
 REACTION_DEBOUNCE_S = 2.0
+
+ALIAS_REPLY_TTL_S = 5.0
 
 
 class ReactionDebouncer:
@@ -167,6 +170,27 @@ class ReactionFeedback:
             )
         except Exception:  # noqa: BLE001
             pass
+
+    async def report_alias_required(self, message: "TgMessage") -> None:
+        """Реакция 🪪 на сообщение без alias, когда он обязателен (best-effort)."""
+        try:
+            await self._bot.set_message_reaction(
+                message.chat.id,
+                message.message_id,
+                reaction=[ReactionTypeEmoji(emoji="🪪")],
+            )
+        except Exception:  # noqa: BLE001
+            pass
+
+    async def send_expiring_reply(
+        self, message: "TgMessage", text: str, delay: float = ALIAS_REPLY_TTL_S
+    ) -> None:
+        """Reply, который сам удаляется через ``delay`` секунд. Исходное сообщение не трогаем."""
+        try:
+            bot_msg = await message.reply(text)
+        except Exception:  # noqa: BLE001
+            return
+        asyncio.create_task(delete_after(delay, bot_msg))
 
     @staticmethod
     def _reaction_for(

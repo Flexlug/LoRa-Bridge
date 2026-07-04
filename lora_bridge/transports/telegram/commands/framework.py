@@ -24,7 +24,6 @@ import asyncio
 import logging
 import re
 from collections.abc import Awaitable, Callable
-from contextlib import suppress
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -33,6 +32,8 @@ from aiogram.filters import Command
 from aiogram.types import BotCommand
 from aiogram.types import CallbackQuery
 from aiogram.types import Message as TgMessage
+
+from ..ephemeral import delete_after
 
 if TYPE_CHECKING:
     from ..moderation.roles import Role
@@ -48,13 +49,6 @@ INSUFFICIENT_RIGHTS_REPLY = "Недостаточно прав."
 PRIVATE_ONLY_REPLY = "Команды работают только в личных сообщениях с ботом."
 
 _GROUP_DELETE_DELAY = 5.0
-
-
-async def _delete_after(delay: float, *messages: TgMessage) -> None:
-    await asyncio.sleep(delay)
-    for msg in messages:
-        with suppress(Exception):
-            await msg.delete()
 
 CommandHandler = Callable[[TgMessage], Awaitable[None]]
 CallbackHandler = Callable[[CallbackQuery], Awaitable[None]]
@@ -124,7 +118,7 @@ def build_command_router(
         async def _group_redirect(message: TgMessage) -> None:
             bot_msg = await message.reply(PRIVATE_ONLY_REPLY)
             asyncio.create_task(
-                _delete_after(_GROUP_DELETE_DELAY, bot_msg, message)
+                delete_after(_GROUP_DELETE_DELAY, bot_msg, message)
             )
 
     for spec in commands:

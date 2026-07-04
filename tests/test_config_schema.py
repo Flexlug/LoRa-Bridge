@@ -257,13 +257,23 @@ def test_telegram_commands_with_block() -> None:
     )
     assert cfg.commands is not None
     assert cfg.commands.owner_id == 123
-    assert cfg.commands.alias_max_chars == 16
+    assert cfg.commands.alias_max_chars == 8
 
 
 def test_telegram_commands_alias_max_chars_custom() -> None:
     cfg = TelegramMessengerConfig(
         id="tg", kind="telegram", token="tok",
-        commands=TelegramCommandsConfig(owner_id=1, alias_max_chars=8),
+        commands=TelegramCommandsConfig(owner_id=1, alias_max_chars=20),
     )
     assert cfg.commands is not None
-    assert cfg.commands.alias_max_chars == 8
+    assert cfg.commands.alias_max_chars == 20
+
+
+def test_telegram_commands_require_alias_default_true() -> None:
+    cfg = TelegramCommandsConfig(owner_id=1)
+    assert cfg.require_alias is True
+
+
+def test_telegram_commands_require_alias_can_disable() -> None:
+    cfg = TelegramCommandsConfig(owner_id=1, require_alias=False)
+    assert cfg.require_alias is False
