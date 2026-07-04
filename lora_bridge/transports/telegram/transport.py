@@ -198,7 +198,7 @@ class TelegramTransport(Transport):
             if await self._store.is_disabled(user_id):
                 await self._reactions.report_disabled(message)
                 return
-            settings: Optional[UserSettings] = await self._store.get_user_settings(user_id)
+            settings = await self._store.get_user_settings(user_id)
             if self._require_alias and not settings.alias:
                 await self._reactions.report_alias_required(message)
                 await self._reactions.send_expiring_reply(message, ALIAS_REQUIRED_TEXT)
