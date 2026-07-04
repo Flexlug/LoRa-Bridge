@@ -8,7 +8,8 @@ lora:                                # МАССИВ физических LoRa-н
       # usb(VID:PID) | serial(port) | tcp(host:port) | ble(address) — см. docs/install/meshcore.md
       type: usb
       device_id: "10c4:ea60"         # VID:PID устройства, из lsusb / Device Manager
-    log_raw_rx: true                 # логировать сырые RX-пакеты эфира — помогает поймать PSK/chan_hash мисматч
+    # log_raw_rx: true                 # диагностика: сырые RX-пакеты эфира — помогает поймать PSK/chan_hash
+                                        # мисматч (см. предупреждение про "#" ниже). По умолчанию false — шумно.
     # endpoints — это MAP: ключ = имя эндпоинта (на него ссылается rooms[].lora.endpoint).
     # type — термин из MeshCore-приложения; механика (слоты, PSK, login, ACK) — в адаптере, §5.1.
     endpoints:
