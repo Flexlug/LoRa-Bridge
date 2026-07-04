@@ -39,7 +39,7 @@ class TelegramCommandsConfig(BaseModel):
 
     owner_id: int = Field(description="Telegram user ID владельца бота (роль OWNER).")
     alias_max_chars: int = Field(
-        default=16,
+        default=8,
         description="Максимальная длина псевдонима пользователя.",
     )
     require_alias: bool = Field(

@@ -44,7 +44,7 @@ messengers:
     # privacy mode у бота ДОЛЖЕН быть отключён (BotFather /setprivacy → Disable)
     commands:                    # опционально; без блока — командный роутер не включается
       owner_id: 123456789        # Telegram user ID владельца (роль OWNER)
-      alias_max_chars: 8         # максимальная длина псевдонима (по умолчанию 16)
+      alias_max_chars: 8         # максимальная длина псевдонима (по умолчанию 8)
       # require_alias: false     # без alias сообщения не бриджатся (по умолчанию true,
                                   # действует для всех ролей без исключений — см. /set_alias)
 

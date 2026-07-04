@@ -105,7 +105,7 @@ def make_moderation_commands(
 ) -> list[CommandSpec]:
     """Фабрика команд модерации с замыканием над store и cfg."""
     owner_id: int = getattr(cfg, "owner_id", 0)
-    alias_max: int = getattr(cfg, "alias_max_chars", 16)
+    alias_max: int = getattr(cfg, "alias_max_chars", 8)
 
     async def ban(message: TgMessage) -> None:
         target = await resolve_target(message)
