@@ -1,36 +1,80 @@
-# Пример конфигурации LoRa-Bridge — минимальный набор полей для запуска.
-# Скопируйте в config.yaml и замените под своё устройство и бота.
-#
-# Секреты можно писать как есть или через ${ENV_VAR} — обе формы работают.
-# Полный справочник всех полей (private/room_server-каналы, rate-limit,
-# команды бота и т.д.) — docs/config/index.md.
-# Как найти device_id/port/host/address под своё устройство — docs/install/meshcore.md.
+# Пример конфигурации LoRa-Bridge.
+# Скопируйте в config.yaml и подставьте секреты через ${ENV_VAR} (или впишите как есть).
+# Подробности модели — docs/ARCHITECTURE.md (§5.1 типы эндпоинтов, §12 конфиг).
 
-lora:
-  - id: meshcore-1
+lora:                                # МАССИВ физических LoRa-нод
+  - id: meshcore
     connection:
-      # usb | serial | tcp | ble — см. docs/install/meshcore.md
+      # usb(VID:PID) | serial(port) | tcp(host:port) | ble(address) — см. docs/install/meshcore.md
       type: usb
-      device_id: "0403:6015" # VID:PID устройства, из lsusb / Device Manager
+      device_id: "10c4:ea60"         # VID:PID устройства, из lsusb / Device Manager
+    log_raw_rx: true                 # логировать сырые RX-пакеты эфира — помогает поймать PSK/chan_hash мисматч
+    # endpoints — это MAP: ключ = имя эндпоинта (на него ссылается rooms[].lora.endpoint).
+    # type — термин из MeshCore-приложения; механика (слоты, PSK, login, ACK) — в адаптере, §5.1.
     endpoints:
-      general:
-        type: public # публичный канал MeshCore, без секрета
-        channel_name: "General" # имя канала из вкладки Channels в MeshCore
-        read_only: true # постинг из мессенджера запрещён (RX не затронут)
-    policies:
-      egress_rate:
+      public:                                          # Channel со своим secret (приватный), flood без ACK
+        type: private
+        channel_name: "Public"                         # имя канала — строго как во вкладке Channels в MeshCore
+        secret: ${MC_PUBLIC_SECRET}
+        read_only: true                                # постинг из мессенджера запрещён (RX не затронут)
+      connections:                                     # Public-канал MeshCore: PSK = sha256(channel_name)
+        type: public
+        channel_name: "#connections"                   # ВАЖНО: "#" — часть имени, участвует в выводе PSK.
+                                                         # "connections" ≠ "#connections" (разный PSK, разный
+                                                         # chan_hash на радио) — копируйте имя из вкладки
+                                                         # Channels буква в букву, включая "#", если он там есть.
+        read_only: true
+      town:
+        type: public
+        channel_name: "#town"
+      town-room:                                       # Room Server: direct + login, реальный ACK + backfill
+        type: room_server
+        pubkey: "a1b2c3d4…"
+        password: ${MC_TOWN_ROOM_PW}                    # guest-пароль (пусто → read-only на стороне room server)
+    policies:                        # политики САМОЙ ноды (радио-специфичны); остальное — дефолты, §7
+      egress_rate:                                     # под duty cycle
         msgs_per_window: 6
         window_seconds: 60
 
 messengers:
-  - id: telegram-main
-    kind: telegram
-    token: ${TG_BOT_TOKEN} # token от @BotFather
+  - id: telegram
+    kind: telegram        # kind → тег источника в префиксе LoRa: "TG"
+    token: ${TG_BOT_TOKEN}
+    # privacy mode у бота ДОЛЖЕН быть отключён (BotFather /setprivacy → Disable)
+    commands:                    # опционально; без блока — командный роутер не включается
+      owner_id: 123456789        # Telegram user ID владельца (роль OWNER)
+      alias_max_chars: 8         # максимальная длина псевдонима (по умолчанию 16)
 
 rooms:
+  # topic указан → берём/шлём ТОЛЬКО эту тему; topic опущен → работаем с General (и только с ним)
   - lora:
-      node: meshcore-1
-      endpoint: general
+      node: meshcore
+      endpoint: public
     subscribers:
-      - transport: telegram-main
-        chat: "-1001234567890" # chat_id чата, см. docs/install/telegram.md
+      - transport: telegram
+        chat: "-100123456789"    # chat_id супергруппы, см. docs/install/telegram.md
+        topic: "189"
+
+  - lora:
+      node: meshcore
+      endpoint: connections
+    subscribers:
+      - transport: telegram
+        chat: "-100123456789"
+        topic: "194"
+
+  - lora:
+      node: meshcore
+      endpoint: town
+    subscribers:
+      - transport: telegram
+        chat: "-100123456789"
+        topic: "197"
+
+  - lora:
+      node: meshcore
+      endpoint: town-room
+    subscribers:
+      - transport: telegram
+        chat: "-100123456789"
+        topic: "181"
