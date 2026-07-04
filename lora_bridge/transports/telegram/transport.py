@@ -49,6 +49,11 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
+ALIAS_REQUIRED_TEXT = (
+    "Установи alias в личке с ботом: /set_alias <имя> — иначе сообщения из "
+    "этого чата не долетают до LoRa."
+)
+
 
 def split_channel(channel: str) -> tuple[int, Optional[int]]:
     """``"chat"`` / ``"chat#topic"`` → ``(chat_id, thread_id|None)``. Инверсия ``messenger_channel``.
@@ -86,12 +91,14 @@ class TelegramTransport(Transport):
         self._dp = Dispatcher()
         self._store: Optional[ModerationStore] = None
         self._owner_id: int = 0
+        self._require_alias: bool = False
         # (tg_id, chat_id) — уже обновлённые scope; избегаем лишних API-вызовов
         self._cmd_scope_done: set[tuple[int, int]] = set()
 
         if config.commands is not None:
             owner_id = config.commands.owner_id
             self._owner_id = owner_id
+            self._require_alias = getattr(config.commands, "require_alias", True)
             if _store is not None:
                 self._store = _store
             else:
@@ -192,6 +199,10 @@ class TelegramTransport(Transport):
                 await self._reactions.report_disabled(message)
                 return
             settings: Optional[UserSettings] = await self._store.get_user_settings(user_id)
+            if self._require_alias and not settings.alias:
+                await self._reactions.report_alias_required(message)
+                await self._reactions.send_expiring_reply(message, ALIAS_REQUIRED_TEXT)
+                return
         else:
             settings = None
         await self._hub.publish(self.normalize(message, settings))

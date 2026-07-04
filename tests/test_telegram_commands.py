@@ -35,7 +35,9 @@ async def _make_transport_with_commands() -> TelegramTransport:
     store = await _make_store()
     config = SimpleNamespace(
         token=_FAKE_TOKEN,
-        commands=SimpleNamespace(owner_id=_OWNER_ID, alias_max_chars=16),
+        commands=SimpleNamespace(
+            owner_id=_OWNER_ID, alias_max_chars=16, require_alias=False,
+        ),
     )
     transport = TelegramTransport("tg", config, _store=store)  # type: ignore[arg-type]
     transport._bot.session = AsyncMock()
