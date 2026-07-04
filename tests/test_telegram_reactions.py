@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 from aiogram.types import ReactionTypeEmoji
@@ -141,3 +142,43 @@ async def test_sent_clears_applied_reaction() -> None:
     bot.set_message_reaction.assert_awaited_once()
     _, kwargs = bot.set_message_reaction.call_args
     assert kwargs["reaction"] == []
+
+
+# --- ReactionFeedback: alias required ---------------------------------------
+
+
+async def test_report_alias_required_sets_identity_card_emoji() -> None:
+    bot = _bot()
+    fb = ReactionFeedback(bot)
+    message = SimpleNamespace(chat=SimpleNamespace(id=111), message_id=5)
+
+    await fb.report_alias_required(message)
+
+    bot.set_message_reaction.assert_awaited_once()
+    _, kwargs = bot.set_message_reaction.call_args
+    assert kwargs["reaction"][0].emoji == "🪪"
+
+
+async def test_send_expiring_reply_sends_then_deletes_after_delay() -> None:
+    bot = _bot()
+    fb = ReactionFeedback(bot)
+    sent = AsyncMock()
+    message = AsyncMock()
+    message.reply = AsyncMock(return_value=sent)
+
+    await fb.send_expiring_reply(message, "текст", delay=0.03)
+
+    message.reply.assert_awaited_once_with("текст")
+    sent.delete.assert_not_awaited()  # ещё не истёк delay
+
+    await asyncio.sleep(0.05)
+    sent.delete.assert_awaited_once()
+
+
+async def test_send_expiring_reply_swallows_reply_failure() -> None:
+    bot = _bot()
+    fb = ReactionFeedback(bot)
+    message = AsyncMock()
+    message.reply = AsyncMock(side_effect=RuntimeError("boom"))
+
+    await fb.send_expiring_reply(message, "текст", delay=0.01)  # не должно бросать

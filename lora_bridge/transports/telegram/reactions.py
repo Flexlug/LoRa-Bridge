@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from contextlib import suppress
 from typing import Optional
 
 from aiogram import Bot
@@ -40,6 +41,11 @@ REJECT_EMOJI: dict[RejectReason, str] = {
 # MeshCore MSG_OK для public/private каналов приходит за 0.5–1.5с;
 # 2.0с даёт запас чтобы 👀 не мелькал при нормальной работе.
 REACTION_DEBOUNCE_S = 2.0
+
+# Время жизни self-destruct реплики с напоминанием про alias (секунды).
+# Совпадает с _GROUP_DELETE_DELAY в commands/framework.py — единый UX-интервал
+# для служебных сообщений бота, которые не должны копиться в чате.
+ALIAS_REPLY_TTL_S = 5.0
 
 
 class ReactionDebouncer:
@@ -167,6 +173,38 @@ class ReactionFeedback:
             )
         except Exception:  # noqa: BLE001
             pass
+
+    async def report_alias_required(self, message: "TgMessage") -> None:
+        """Реакция 🪪 на сообщение без alias, когда он обязателен (best-effort)."""
+        try:
+            await self._bot.set_message_reaction(
+                message.chat.id,
+                message.message_id,
+                reaction=[ReactionTypeEmoji(emoji="🪪")],
+            )
+        except Exception:  # noqa: BLE001
+            pass
+
+    async def send_expiring_reply(
+        self, message: "TgMessage", text: str, delay: float = ALIAS_REPLY_TTL_S
+    ) -> None:
+        """Reply, который сам удаляется через ``delay`` секунд.
+
+        Сам reply отправляется синхронно (быстрый API-вызов); удаление — фоновой
+        задачей, чтобы не блокировать обработку следующих сообщений. Исходное
+        сообщение пользователя не трогаем — удаляется только ответ бота.
+        """
+        try:
+            bot_msg = await message.reply(text)
+        except Exception:  # noqa: BLE001
+            return
+        asyncio.create_task(self._delete_reply_after(delay, bot_msg))
+
+    @staticmethod
+    async def _delete_reply_after(delay: float, reply: "TgMessage") -> None:
+        await asyncio.sleep(delay)
+        with suppress(Exception):
+            await reply.delete()
 
     @staticmethod
     def _reaction_for(
