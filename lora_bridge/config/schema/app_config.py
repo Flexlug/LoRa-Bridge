@@ -6,11 +6,11 @@ from typing import assert_never
 
 from pydantic import BaseModel, Field, model_validator
 
+from ...domain.models import messenger_channel
 from .ids import EndpointName, NodeId
 from .messengers import MessengerConfig
 from .nodes import LoraNode
 from .rooms import LoraRef, LoraSubscriber, MessengerSubscriber, RoomConfig
-from ...domain.models import messenger_channel
 
 
 def validate_lora_ref(

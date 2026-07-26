@@ -39,7 +39,6 @@ from lora_bridge.config.schema import (
     UsbConnection,
 )
 
-
 # ===========================================================================
 # 1. Чистые хелперы
 # ===========================================================================
@@ -342,7 +341,7 @@ def test_format_one_does_not_raise_on_unknown_pydantic_kind():
     try:
         _M.model_validate({"x": "not an int"})
     except ValidationError as exc:
-        err = {**list(exc.errors())[0], "type": "totally_unknown_pydantic_kind"}
+        err = {**next(iter(exc.errors())), "type": "totally_unknown_pydantic_kind"}
         rendered = "\n".join(_format_one(err, 1))
         assert rendered.startswith("1. ")
         # сырое сообщение pydantic пробрасывается как есть

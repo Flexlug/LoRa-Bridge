@@ -11,8 +11,8 @@ from typing import TYPE_CHECKING
 
 from aiogram.types import Message as TgMessage
 
-from .framework import CommandMeta, CommandSpec, render_help
 from ..moderation.roles import Role
+from .framework import CommandMeta, CommandSpec, render_help
 
 if TYPE_CHECKING:
     from ..moderation.store import ModerationStore
@@ -24,7 +24,7 @@ BASIC_COMMAND_METAS: list[CommandMeta] = [
 
 
 def make_basic_commands(
-    store: "ModerationStore",
+    store: ModerationStore,
     owner_id: int,
     all_metas: list[CommandMeta],
 ) -> list[CommandSpec]:

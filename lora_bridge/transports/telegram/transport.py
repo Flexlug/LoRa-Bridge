@@ -12,25 +12,12 @@ from __future__ import annotations
 import asyncio
 import html
 import logging
-from typing import AsyncIterator, Optional, TYPE_CHECKING
+from collections.abc import AsyncIterator
+from typing import TYPE_CHECKING
 
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.types import Message as TgMessage
 
-from .commands import (
-    ALL_COMMAND_METAS,
-    build_command_router,
-    command_menu,
-    make_audit_callbacks,
-    make_basic_commands,
-    make_moderation_commands,
-)
-from .moderation.roles import Role
-from .moderation.store import ModerationStore, UserSettings
-from .moderation.transliterate import transliterate
-from .reactions import ReactionFeedback
-from ..hub import Hub
-from ...domain.ports import Transport
 from ...domain.models import (
     BRIDGE_TRANSPORT_UID,
     Capabilities,
@@ -43,6 +30,20 @@ from ...domain.models import (
     SendResult,
     messenger_channel,
 )
+from ...domain.ports import Transport
+from ..hub import Hub
+from .commands import (
+    ALL_COMMAND_METAS,
+    build_command_router,
+    command_menu,
+    make_audit_callbacks,
+    make_basic_commands,
+    make_moderation_commands,
+)
+from .moderation.roles import Role
+from .moderation.store import ModerationStore, UserSettings
+from .moderation.transliterate import transliterate
+from .reactions import ReactionFeedback
 
 if TYPE_CHECKING:
     from ...config.schema import TelegramMessengerConfig
@@ -55,7 +56,7 @@ ALIAS_REQUIRED_TEXT = (
 )
 
 
-def split_channel(channel: str) -> tuple[int, Optional[int]]:
+def split_channel(channel: str) -> tuple[int, int | None]:
     """``"chat"`` / ``"chat#topic"`` → ``(chat_id, thread_id|None)``. Инверсия ``messenger_channel``.
 
     Декод нужен только на send-стороне адаптера (chat_id/thread_id для ``bot.send_message``),
@@ -81,15 +82,15 @@ class TelegramTransport(Transport):
     def __init__(
         self,
         transport_id: str,
-        config: "TelegramMessengerConfig",
+        config: TelegramMessengerConfig,
         *,
-        _store: Optional[ModerationStore] = None,
+        _store: ModerationStore | None = None,
     ) -> None:
         self.id = transport_id
         self._hub = Hub()
         self._bot = Bot(config.token)
         self._dp = Dispatcher()
-        self._store: Optional[ModerationStore] = None
+        self._store: ModerationStore | None = None
         self._owner_id: int = 0
         self._require_alias: bool = False
         # (tg_id, chat_id) — уже обновлённые scope; избегаем лишних API-вызовов
@@ -147,7 +148,7 @@ class TelegramTransport(Transport):
         try:
             await self._bot.set_my_commands(menu, scope=BotCommandScopeChat(chat_id=tg_id))
             self._cmd_scope_done.add((tg_id, tg_id))
-        except Exception:
+        except Exception:  # noqa: BLE001 — меню команд best-effort, сбой не критичен
             log.debug("Не удалось обновить меню команд user=%d", tg_id)
 
     async def _clear_user_group_commands(self, tg_id: int, group_chat_id: int) -> None:
@@ -157,7 +158,7 @@ class TelegramTransport(Transport):
             await self._bot.set_my_commands(
                 [], scope=BotCommandScopeChatMember(chat_id=group_chat_id, user_id=tg_id)
             )
-        except Exception:
+        except Exception:  # noqa: BLE001 — меню команд best-effort, сбой не критичен
             log.debug("Не удалось скрыть меню в группе user=%d chat=%d", tg_id, group_chat_id)
 
     async def start(self) -> None:
@@ -208,7 +209,7 @@ class TelegramTransport(Transport):
         await self._hub.publish(self.normalize(message, settings))
 
     def normalize(
-        self, message: TgMessage, settings: Optional[UserSettings] = None
+        self, message: TgMessage, settings: UserSettings | None = None
     ) -> Message:
         thread = message.message_thread_id
         chat_id = str(message.chat.id)
@@ -252,7 +253,7 @@ class TelegramTransport(Transport):
                 chat_id, text, message_thread_id=thread_id, parse_mode=parse_mode
             )
             return SendResult.success()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             log.exception("Telegram send в %s упал", target.channel)
             return SendResult.failure(str(exc))
 
@@ -264,7 +265,7 @@ class TelegramTransport(Transport):
         origin: ChannelRef,
         message_id: str,
         status: DeliveryStatus,
-        reason: Optional[RejectReason] = None,
+        reason: RejectReason | None = None,
     ) -> None:
         chat_id, _ = split_channel(origin.channel)
         await self._reactions.report(chat_id, message_id, status, reason)

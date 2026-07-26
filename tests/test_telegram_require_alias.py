@@ -38,7 +38,7 @@ def _group_update(text: str, user_id: int = _USER_ID) -> Update:
         update_id=1,
         message=Message(
             message_id=10,
-            date=dt.datetime(2024, 1, 1),
+            date=dt.datetime(2024, 1, 1, tzinfo=dt.UTC),
             chat=Chat(id=_GROUP_CHAT_ID, type="supergroup"),
             from_user=User(id=user_id, is_bot=False, first_name="tester"),
             text=text,

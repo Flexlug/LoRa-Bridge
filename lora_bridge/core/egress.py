@@ -6,16 +6,16 @@
 
 from __future__ import annotations
 
-from typing import Awaitable, Callable
+from collections.abc import Awaitable, Callable
 
 import anyio
 
+from ..domain.models import DeliveryStatus, RejectReason, SendResult
+from ..domain.ports import Transport
 from .journal import OutboundJournal
 from .loopguard import LoopGuard
 from .queue import CommitQueue, QueueItem
 from .status import StatusDispatcher
-from ..domain.models import DeliveryStatus, RejectReason, SendResult
-from ..domain.ports import Transport
 
 OnCommitted = Callable[[QueueItem], Awaitable[None]]
 OnReject = Callable[[QueueItem, RejectReason], Awaitable[None]]

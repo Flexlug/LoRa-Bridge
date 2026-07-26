@@ -2,10 +2,9 @@
 from __future__ import annotations
 
 import datetime as dt
+from collections.abc import AsyncGenerator
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
-
-from collections.abc import AsyncGenerator
 
 import pytest
 from aiogram.types import Chat, Message, User
@@ -32,14 +31,14 @@ def _msg(text: str, user_id: int = 10, reply_user_id: int | None = None) -> Mess
     if reply_user_id is not None:
         reply = Message(
             message_id=5,
-            date=dt.datetime(2024, 1, 1),
+            date=dt.datetime(2024, 1, 1, tzinfo=dt.UTC),
             chat=Chat(id=1, type="group"),
             from_user=User(id=reply_user_id, is_bot=False, first_name="Target"),
             text="some text",
         )
     return Message(
         message_id=10,
-        date=dt.datetime(2024, 1, 1),
+        date=dt.datetime(2024, 1, 1, tzinfo=dt.UTC),
         chat=Chat(id=1, type="group"),
         from_user=User(id=user_id, is_bot=False, first_name="Actor"),
         text=text,

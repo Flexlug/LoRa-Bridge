@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Literal, Optional, Union
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -103,7 +103,7 @@ class RoomServerEndpoint(EndpointBase):
         Нормализуем здесь, чтобы ключи join'ились независимо от регистра.
         """
         return value.lower()
-    password: Optional[str] = Field(
+    password: str | None = Field(
         default=None,
         description=(
             "Гостевой пароль. Если опущен — доступ read-only (постинг недоступен)."
@@ -112,7 +112,7 @@ class RoomServerEndpoint(EndpointBase):
 
 
 Endpoint = Annotated[
-    Union[PublicEndpoint, PrivateEndpoint, RoomServerEndpoint],
+    PublicEndpoint | PrivateEndpoint | RoomServerEndpoint,
     Field(discriminator="type"),
 ]
 """Тип LoRa-эндпоинта в MeshCore-ноде.

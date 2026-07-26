@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 import aiosqlite
 
@@ -35,10 +34,10 @@ CREATE TABLE IF NOT EXISTS audit_log (
 
 @dataclass(frozen=True)
 class UserSettings:
-    alias: Optional[str] = None
+    alias: str | None = None
     transliter: bool = False
     disabled: bool = False
-    banned_name: Optional[str] = None
+    banned_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -46,17 +45,17 @@ class AuditEntry:
     id: int
     ts: int
     actor_id: int
-    actor_name: Optional[str]
+    actor_name: str | None
     action: str
-    target_id: Optional[int]
-    target_name: Optional[str]
-    detail: Optional[str]
+    target_id: int | None
+    target_name: str | None
+    detail: str | None
 
 
 class ModerationStore:
     def __init__(self, db_path: str) -> None:
         self._db_path = db_path
-        self._db: Optional[aiosqlite.Connection] = None
+        self._db: aiosqlite.Connection | None = None
 
     async def start(self) -> None:
         self._db = await aiosqlite.connect(self._db_path)
@@ -85,7 +84,7 @@ class ModerationStore:
             return Role.USER
         return Role.ADMIN if row[0] == "admin" else Role.MODERATOR
 
-    async def set_role(self, tg_id: int, role: str, chat_id: Optional[int] = None) -> None:
+    async def set_role(self, tg_id: int, role: str, chat_id: int | None = None) -> None:
         await self._conn.execute(
             "INSERT OR REPLACE INTO roles (tg_id, role, last_chat_id) VALUES (?,?,?)",
             (tg_id, role, chat_id),
@@ -96,7 +95,7 @@ class ModerationStore:
         await self._conn.execute("DELETE FROM roles WHERE tg_id=?", (tg_id,))
         await self._conn.commit()
 
-    async def get_all_privileged(self) -> list[tuple[int, str, Optional[int]]]:
+    async def get_all_privileged(self) -> list[tuple[int, str, int | None]]:
         cur = await self._conn.execute("SELECT tg_id, role, last_chat_id FROM roles")
         rows = await cur.fetchall()
         return [(r[0], r[1], r[2]) for r in rows]
@@ -125,7 +124,7 @@ class ModerationStore:
             banned_name=row[3],
         )
 
-    async def ban_user(self, tg_id: int, banned_name: Optional[str]) -> None:
+    async def ban_user(self, tg_id: int, banned_name: str | None) -> None:
         await self._conn.execute(
             "INSERT INTO user_settings (tg_id, disabled, banned_name) VALUES (?,1,?) "
             "ON CONFLICT(tg_id) DO UPDATE SET disabled=1, banned_name=excluded.banned_name",
@@ -139,14 +138,14 @@ class ModerationStore:
         )
         await self._conn.commit()
 
-    async def get_banned_users(self) -> list[tuple[int, Optional[str], Optional[str]]]:
+    async def get_banned_users(self) -> list[tuple[int, str | None, str | None]]:
         cur = await self._conn.execute(
             "SELECT tg_id, banned_name, alias FROM user_settings WHERE disabled=1"
         )
         rows = await cur.fetchall()
         return [(r[0], r[1], r[2]) for r in rows]
 
-    async def set_alias(self, tg_id: int, alias: Optional[str]) -> None:
+    async def set_alias(self, tg_id: int, alias: str | None) -> None:
         await self._conn.execute(
             "INSERT INTO user_settings (tg_id, alias) VALUES (?,?) "
             "ON CONFLICT(tg_id) DO UPDATE SET alias=excluded.alias",
@@ -174,11 +173,11 @@ class ModerationStore:
         self,
         ts: int,
         actor_id: int,
-        actor_name: Optional[str],
+        actor_name: str | None,
         action: str,
-        target_id: Optional[int] = None,
-        target_name: Optional[str] = None,
-        detail: Optional[str] = None,
+        target_id: int | None = None,
+        target_name: str | None = None,
+        detail: str | None = None,
     ) -> None:
         await self._conn.execute(
             "INSERT INTO audit_log "

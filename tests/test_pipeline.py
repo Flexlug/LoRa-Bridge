@@ -15,16 +15,16 @@ from lora_bridge.core.queue import CommitQueue
 from lora_bridge.core.routing import LoraMember, MessengerMember, RoomRegistry, RoomRoute
 from lora_bridge.core.status import StatusDispatcher
 from lora_bridge.domain.models import (
+    LORA_SENDER_UID,
     ChannelRef,
     DeliveryStatus,
     Identity,
-    LORA_SENDER_UID,
     LabelFormat,
     Message,
     RateSpec,
     RejectReason,
 )
-from tests.helpers.fakes import FakeTransport, LORA_CAPS, MSG_CAPS
+from tests.helpers.fakes import LORA_CAPS, MSG_CAPS, FakeTransport
 
 pytestmark = pytest.mark.anyio
 
@@ -54,9 +54,12 @@ def _msg(transport_id: str, channel: str, text: str, mid: str = "m1") -> Message
     )
 
 
+_DEFAULT_RATE = RateSpec(100, 60)
+
+
 async def _build(
     routes, nodes_transports, messengers, *,
-    capacity=16, rate=RateSpec(100, 60), readonly_endpoints=frozenset(),
+    capacity=16, rate=_DEFAULT_RATE, readonly_endpoints=frozenset(),
 ):
     journal = SqliteJournal(":memory:")
     await journal.start()
@@ -213,7 +216,7 @@ async def test_rate_limit_rejected():
     m1 = FakeTransport("tg", MSG_CAPS)
     room = RoomRoute(members=(LoraMember("n1", "emergency"), MessengerMember("tg", "-100", None)))
     # ёмкость 1, бёрст 1 → второе сообщение отвергается
-    bridge, nodes, notices = await _build(
+    bridge, _, _ = await _build(
         [room], {"n1": lora}, {"tg": m1}, capacity=1, rate=RateSpec(1, 60, burst=1)
     )
 

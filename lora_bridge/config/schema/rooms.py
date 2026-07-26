@@ -6,8 +6,6 @@
 
 from __future__ import annotations
 
-from typing import Optional, Union
-
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .ids import EndpointName, MessengerId, NodeId
@@ -36,7 +34,7 @@ class MessengerSubscriber(BaseModel):
             "(узнаётся через @userinfobot или getUpdates)."
         )
     )
-    topic: Optional[str] = Field(
+    topic: str | None = Field(
         default=None,
         description=(
             "Тема (thread) внутри чата. Если опущена — работаем только с General. "
@@ -53,7 +51,7 @@ class LoraSubscriber(BaseModel):
     lora: LoraRef = Field(description="LoRa-эндпоинт-получатель.")
 
 
-Subscriber = Union[MessengerSubscriber, LoraSubscriber]
+Subscriber = MessengerSubscriber | LoraSubscriber
 """Подписчик комнаты — либо чат мессенджера, либо peer LoRa-эндпоинт.
 
 Smart union без явного дискриминатора: pydantic выбирает форму по набору полей

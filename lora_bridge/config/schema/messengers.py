@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Literal, Optional, Union
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
@@ -24,7 +24,7 @@ class BaseMessengerConfig(BaseModel):
     kind: str = Field(
         description="Тип мессенджера. Перекрывается ``Literal`` в подклассах.",
     )
-    tag: Optional[str] = Field(
+    tag: str | None = Field(
         default=None,
         description=(
             "Переопределение тега источника в префиксе ``[тип:ник]`` при выгрузке "
@@ -64,14 +64,14 @@ class TelegramMessengerConfig(BaseMessengerConfig):
         description="Тег дискриминатора — должно быть ``telegram``."
     )
     token: str = Field(description="Telegram Bot API token, выданный BotFather.")
-    commands: Optional[TelegramCommandsConfig] = Field(
+    commands: TelegramCommandsConfig | None = Field(
         default=None,
         description="Блок команд; отсутствие или null отключает командный роутер.",
     )
 
 
 MessengerConfig = Annotated[
-    Union[TelegramMessengerConfig],  # расширять Union при добавлении мессенджеров
+    TelegramMessengerConfig,  # расширять Union при добавлении мессенджеров
     Field(discriminator="kind"),
 ]
 """Конфиг одного мессенджер-транспорта.

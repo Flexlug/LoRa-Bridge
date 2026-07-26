@@ -7,7 +7,8 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import AsyncIterator, Optional, Protocol
+from collections.abc import AsyncIterator
+from typing import Protocol
 
 from .models import (
     Capabilities,
@@ -25,7 +26,7 @@ class AdmissionPolicy(Protocol):
     Возвращает ``None`` — допустить; ``RejectReason`` — отклонить с этой причиной.
     """
 
-    async def check(self, msg: Message) -> Optional[RejectReason]: ...
+    async def check(self, msg: Message) -> RejectReason | None: ...
 
 
 class Transport(ABC):
@@ -59,5 +60,5 @@ class Transport(ABC):
         origin: ChannelRef,
         message_id: str,
         status: DeliveryStatus,
-        reason: Optional[RejectReason] = None,
+        reason: RejectReason | None = None,
     ) -> None: ...

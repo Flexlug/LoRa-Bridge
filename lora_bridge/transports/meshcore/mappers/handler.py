@@ -11,10 +11,12 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from typing import Any, Callable, ClassVar, Iterable
+from typing import Any, ClassVar
 
-from meshcore import EventType as McEventType, MeshCore
+from meshcore import EventType as McEventType
+from meshcore import MeshCore
 
 from ....domain.models import Message
 

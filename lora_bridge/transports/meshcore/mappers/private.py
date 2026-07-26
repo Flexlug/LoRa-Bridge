@@ -11,9 +11,9 @@ from typing import Any, ClassVar
 
 from meshcore import MeshCore
 
-from . import channel_util
-from .handler import AuthorResolver, EV_CHANNEL_MSG, EndpointHandler, ResolveContext
 from ....domain.models import Message
+from . import channel_util
+from .handler import EV_CHANNEL_MSG, AuthorResolver, EndpointHandler, ResolveContext
 
 
 @dataclass

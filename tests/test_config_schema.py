@@ -14,8 +14,8 @@ from lora_bridge.config.schema import (
     ConnectionBase,
     Endpoint,
     EndpointBase,
-    MessengerConfig,
     MeshCoreNode,
+    MessengerConfig,
     TelegramCommandsConfig,
     TelegramMessengerConfig,
 )

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import AsyncIterator, Optional
+from collections.abc import AsyncIterator
 
 import anyio
 
@@ -55,7 +55,7 @@ class FakeTransport:
         self.capabilities = capabilities
         self._hub = Hub()
         self.sent: list[tuple[ChannelRef, Message]] = []
-        self.statuses: list[tuple[str, DeliveryStatus, Optional[RejectReason]]] = []
+        self.statuses: list[tuple[str, DeliveryStatus, RejectReason | None]] = []
         self.started = False
         self._fail = fail
         self._busy_left = busy_times
@@ -89,7 +89,7 @@ class FakeTransport:
         origin: ChannelRef,
         message_id: str,
         status: DeliveryStatus,
-        reason: Optional[RejectReason] = None,
+        reason: RejectReason | None = None,
     ) -> None:
         self.statuses.append((message_id, status, reason))
 

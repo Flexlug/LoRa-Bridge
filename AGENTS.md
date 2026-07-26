@@ -86,7 +86,7 @@ These come from the LoRa channel's physical constraints and must be preserved by
 
 - Built on `anyio` (asyncio backend). `Bridge.run` creates a single task group: one consumer task per transport, one egress worker per node, one notifier flush loop. No raw `asyncio.create_task` — use the task group so cancellation propagates correctly.
 - `CommitQueue` uses `anyio.create_memory_object_stream` for the queue and exposes `offer()` (non-blocking; returns `False` on full/rate-limited) and async iteration on the receive side. Don't await inside `offer`.
-- Mirror-to-messenger errors are swallowed in `Bridge.mirror_to_messenger` on purpose (`# noqa: BLE001`) — a flaky messenger must not stall the LoRa pipeline.
+- Mirror-to-messenger errors are swallowed in `Bridge.mirror_to_messenger` on purpose — a flaky messenger must not stall the LoRa pipeline.
 
 ### Configuration model
 

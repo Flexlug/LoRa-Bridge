@@ -12,9 +12,9 @@ from unittest.mock import AsyncMock
 
 from lora_bridge.domain.models import (
     BRIDGE_TRANSPORT_UID,
+    LORA_SENDER_UID,
     ChannelRef,
     Identity,
-    LORA_SENDER_UID,
     Message,
     messenger_channel,
 )

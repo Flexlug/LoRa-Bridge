@@ -10,7 +10,6 @@ from __future__ import annotations
 import datetime as dt
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
 
 BRIDGE_TRANSPORT_UID = "__bridge__"
 LORA_SENDER_UID = "__lora__"  # transport_uid для сообщений из эфира (нет отправителя на уровне протокола)
@@ -22,7 +21,7 @@ class ChannelRef:
     channel: str  # opaque id эндпоинта; топик — забота адаптера
 
 
-def messenger_channel(chat: str, topic: Optional[str]) -> str:
+def messenger_channel(chat: str, topic: str | None) -> str:
     """Канонический opaque ``ChannelRef.channel`` для мессенджер-эндпоинта.
 
     Единый контракт для RoomRegistry (ядро) и мессенджер-адаптера (транспорт) —
@@ -44,8 +43,8 @@ class Message:
     sender: Identity
     text: str
     # Время источника, если извлекается. Для LoRa часто None — не выдумываем.
-    timestamp: Optional[dt.datetime] = None
-    origin_tag: Optional[str] = None  # loop-guard (только LoRa-путь)
+    timestamp: dt.datetime | None = None
+    origin_tag: str | None = None  # loop-guard (только LoRa-путь)
 
 
 class DeliveryStatus(Enum):
@@ -74,7 +73,7 @@ class RateSpec:
 @dataclass(frozen=True)
 class Capabilities:
     max_text_bytes: int
-    egress_rate: Optional[RateSpec] = None
+    egress_rate: RateSpec | None = None
     supports_status_feedback: bool = False  # умеет показать статус (реакция)
     emits_tx_done: bool = False  # узел отдаёт TX-done (commit); у MeshCore False (§5.1)
 

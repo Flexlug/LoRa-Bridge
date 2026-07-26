@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Awaitable, assert_never
+from collections.abc import Awaitable
+from typing import assert_never
 
 from meshcore import MeshCore
 from serial.tools import list_ports

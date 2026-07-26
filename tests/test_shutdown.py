@@ -19,7 +19,7 @@ from lora_bridge.core.queue import CommitQueue
 from lora_bridge.core.routing import RoomRegistry
 from lora_bridge.core.status import StatusDispatcher
 from lora_bridge.domain.models import LabelFormat, RateSpec
-from tests.helpers.fakes import FakeTransport, LORA_CAPS, MSG_CAPS
+from tests.helpers.fakes import LORA_CAPS, MSG_CAPS, FakeTransport
 
 pytestmark = pytest.mark.anyio
 

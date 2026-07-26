@@ -17,15 +17,15 @@ Discriminated union'ы спецкейсятся: показываются как
 from __future__ import annotations
 
 import inspect
+import types
 import typing
-from typing import Any, Union, get_args, get_origin
+from typing import Any, get_args, get_origin
 
 import mkdocs_gen_files
 from pydantic import BaseModel
 from pydantic.fields import FieldInfo
 
 from lora_bridge.config import schema
-
 
 # ---------------------------------------------------------------------------
 # Описания секций (то, что не выводится из типов)
@@ -183,6 +183,11 @@ def _collect_models(root: type[BaseModel]) -> list[type[BaseModel]]:
     return ordered
 
 
+def _is_union(origin: object) -> bool:
+    """Union в обеих формах: ``typing.Union[X, Y]`` и PEP 604 ``X | Y`` (types.UnionType)."""
+    return origin is typing.Union or origin is types.UnionType
+
+
 def _models_in(t: Any) -> list[type[BaseModel]]:
     """Все BaseModel-классы, до которых можно дотянуться, развернув ``t``."""
     t = _unwrap_annotated(t)
@@ -191,7 +196,7 @@ def _models_in(t: Any) -> list[type[BaseModel]]:
     origin = get_origin(t)
     if origin in (list, dict, tuple, set, frozenset):
         return [m for a in get_args(t) for m in _models_in(a)]
-    if origin in (Union, typing.Union):
+    if _is_union(origin):
         return [m for a in get_args(t) for m in _models_in(a)]
     return []
 
@@ -288,7 +293,7 @@ def _pretty_type(t: Any) -> str:
         return "кортеж (" + ", ".join(_pretty_type(a) for a in args) + ")"
     if origin is typing.Literal:
         return " \\| ".join(f"`{a!r}`" for a in args)
-    if origin in (Union, typing.Union):
+    if _is_union(origin):
         non_none = [a for a in args if a is not type(None)]
         rendered = " \\| ".join(_pretty_type(a) for a in non_none)
         if len(non_none) < len(args):
@@ -303,7 +308,7 @@ def _render_default(fi: FieldInfo) -> str:
     if fi.default_factory is not None:
         try:
             v = fi.default_factory()  # type: ignore[call-arg]
-        except Exception:
+        except Exception:  # noqa: BLE001 — default_factory может кинуть; показываем прочерк
             return "—"
         return f"`{_repr_default(v)}`"
     if fi.default is None:

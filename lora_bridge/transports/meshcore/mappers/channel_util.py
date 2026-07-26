@@ -20,9 +20,9 @@ from typing import Any
 from meshcore import MeshCore
 
 from ....domain.models import (
+    LORA_SENDER_UID,
     ChannelRef,
     Identity,
-    LORA_SENDER_UID,
     Message,
 )
 

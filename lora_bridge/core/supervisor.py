@@ -9,7 +9,8 @@
 from __future__ import annotations
 
 import logging
-from typing import Callable, Coroutine, Any
+from collections.abc import Callable, Coroutine
+from typing import Any
 
 import anyio
 

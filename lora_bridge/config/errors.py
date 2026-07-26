@@ -14,8 +14,9 @@ Smart-union (``Subscriber``) даёт ошибки сразу для всех в
 
 from __future__ import annotations
 
+import types
 import typing
-from typing import Any, Union, get_args, get_origin
+from typing import Any, get_args, get_origin
 
 from pydantic import BaseModel, ValidationError
 
@@ -277,6 +278,11 @@ def _humanize_model(model: type[BaseModel]) -> str:
     return f"({model.__name__})"
 
 
+def _is_union(origin: object) -> bool:
+    """Union в обеих формах: ``typing.Union[X, Y]`` и PEP 604 ``X | Y`` (types.UnionType)."""
+    return origin is typing.Union or origin is types.UnionType
+
+
 def _pretty_type(t: Any) -> str:
     t = _strip_annotated(t)
     if t is type(None):
@@ -293,7 +299,7 @@ def _pretty_type(t: Any) -> str:
     if origin is dict:
         k, v = get_args(t)
         return f"словарь {_pretty_type(k)} → {_pretty_type(v)}"
-    if origin in (Union, typing.Union):
+    if _is_union(origin):
         inner = [_pretty_type(a) for a in get_args(t) if a is not type(None)]
         return " | ".join(inner)
     if origin is typing.Literal:
@@ -358,7 +364,7 @@ def _step(node: Any, step: Any) -> list[Any]:
     if origin is dict and isinstance(step, str):
         return [_strip_annotated(get_args(node)[1])]
 
-    if origin in (Union, typing.Union):
+    if _is_union(origin):
         # discriminator-тег: сузим Union до варианта, у которого Literal[step]
         if isinstance(step, str):
             for arg in get_args(node):
@@ -382,7 +388,7 @@ def _step(node: Any, step: Any) -> list[Any]:
 
 def _expand_union(t: Any) -> list[Any]:
     t = _strip_annotated(t)
-    if get_origin(t) in (Union, typing.Union):
+    if _is_union(get_origin(t)):
         out: list[Any] = []
         for arg in get_args(t):
             if arg is type(None):
@@ -415,7 +421,7 @@ def _collect_discriminator_tags(root: type[BaseModel] | None = None) -> set[str]
                 visit(fi.annotation)
             return
         origin = get_origin(t)
-        if origin in (Union, typing.Union):
+        if _is_union(origin):
             for arg in get_args(t):
                 arg_t = _strip_annotated(arg)
                 if isinstance(arg_t, type) and issubclass(arg_t, BaseModel):
