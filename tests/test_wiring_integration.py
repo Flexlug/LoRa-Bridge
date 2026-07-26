@@ -725,6 +725,71 @@ async def test_mirror_to_second_subscriber_after_commit(wire_fakes):
     assert "-100" not in sent_chats  # в источник не возвращается
 
 
+async def test_lora_rx_mirrors_to_both_tg_chats(wire_fakes):
+    """RX из LoRa зеркалится в оба Telegram-чата комнаты (fan-out, §12.1)."""
+    lora_fakes, tg_fakes = wire_fakes
+    bridge, _, journal = await assemble(_CFG_TWO_TG_SUBS)
+
+    incoming = Message(
+        id="l1",
+        source=ChannelRef("mc-1", "general"),
+        sender=Identity(display_name="Bob", transport_uid="b1"),
+        text="из эфира",
+    )
+
+    async with anyio.create_task_group() as tg:
+        tg.start_soon(bridge.consume, lora_fakes["mc-1"])
+        await anyio.sleep(0)  # даём consume() подписаться на hub
+        await lora_fakes["mc-1"].inject(incoming)
+        await anyio.sleep(0)  # даём consume() обработать
+        tg.cancel_scope.cancel()
+
+    await journal.stop()
+
+    sent_chats = sorted(ref.channel for ref, _ in tg_fakes["tg"].sent)
+    assert sent_chats == ["-100", "-200"]  # ровно по одному зеркалу в каждый чат
+    assert all("из эфира" in m.text for _, m in tg_fakes["tg"].sent)
+
+
+async def test_mirror_failure_does_not_block_second_chat(wire_fakes, monkeypatch):
+    """Падение зеркала в один чат не мешает доставке во второй (исключения глотаются per-member)."""
+    lora_fakes, tg_fakes = wire_fakes
+    bridge, _, journal = await assemble(_CFG_TWO_TG_SUBS)
+
+    tg_fake = tg_fakes["tg"]
+    real_send = tg_fake.send
+
+    async def send_failing_first_chat(target, msg):
+        # "-100" в комнате первый: падение происходит ДО зеркала во второй чат
+        if target.channel == "-100":
+            raise RuntimeError("чат недоступен")
+        return await real_send(target, msg)
+
+    monkeypatch.setattr(tg_fake, "send", send_failing_first_chat)
+
+    incoming = Message(
+        id="l1",
+        source=ChannelRef("mc-1", "general"),
+        sender=Identity(display_name="Bob", transport_uid="b1"),
+        text="из эфира",
+    )
+
+    # journal.stop() в finally: если регрессия перестанет глотать исключение, оно вылетит
+    # из task group, а незакрытый aiosqlite (не-daemon поток) повесил бы pytest на выходе
+    try:
+        async with anyio.create_task_group() as tg:
+            tg.start_soon(bridge.consume, lora_fakes["mc-1"])
+            await anyio.sleep(0)
+            await lora_fakes["mc-1"].inject(incoming)
+            await anyio.sleep(0)
+            tg.cancel_scope.cancel()
+    finally:
+        await journal.stop()
+
+    sent_chats = [ref.channel for ref, _ in tg_fakes["tg"].sent]
+    assert sent_chats == ["-200"]  # второй чат получил зеркало несмотря на падение первого
+
+
 async def test_label_never_omits_type_prefix(wire_fakes):
     """include_type: never → [Alex] вместо [TG:Alex] даже при двух мессенджерах в комнате."""
     lora_fakes, _ = wire_fakes
