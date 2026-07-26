@@ -14,12 +14,12 @@ Smart-union (``Subscriber``) даёт ошибки сразу для всех в
 
 from __future__ import annotations
 
-import types
 import typing
 from typing import Any, get_args, get_origin
 
 from pydantic import BaseModel, ValidationError
 
+from .introspect import is_union_origin, strip_annotated
 from .schema import AppConfig
 
 __all__ = ["format_validation_error"]
@@ -278,13 +278,8 @@ def _humanize_model(model: type[BaseModel]) -> str:
     return f"({model.__name__})"
 
 
-def _is_union(origin: object) -> bool:
-    """Union в обеих формах: ``typing.Union[X, Y]`` и PEP 604 ``X | Y`` (types.UnionType)."""
-    return origin is typing.Union or origin is types.UnionType
-
-
 def _pretty_type(t: Any) -> str:
-    t = _strip_annotated(t)
+    t = strip_annotated(t)
     if t is type(None):
         return "null"
     # NewType — показываем «NodeId (строка)»: семантика + базовый тип
@@ -299,7 +294,7 @@ def _pretty_type(t: Any) -> str:
     if origin is dict:
         k, v = get_args(t)
         return f"словарь {_pretty_type(k)} → {_pretty_type(v)}"
-    if _is_union(origin):
+    if is_union_origin(origin):
         inner = [_pretty_type(a) for a in get_args(t) if a is not type(None)]
         return " | ".join(inner)
     if origin is typing.Literal:
@@ -308,12 +303,6 @@ def _pretty_type(t: Any) -> str:
 
 
 # --- резолвер: loc → набор кандидатов BaseModel ----------------------------
-
-
-def _strip_annotated(t: Any) -> Any:
-    while hasattr(t, "__metadata__"):
-        t = t.__origin__
-    return t
 
 
 def _resolve_models(loc: tuple[Any, ...]) -> list[type[BaseModel]]:
@@ -347,28 +336,28 @@ def _model_with_field(models: list[type[BaseModel]], field: Any) -> type[BaseMod
 
 
 def _step(node: Any, step: Any) -> list[Any]:
-    node = _strip_annotated(node)
+    node = strip_annotated(node)
     origin = get_origin(node)
 
     if isinstance(node, type) and issubclass(node, BaseModel):
         if isinstance(step, str) and step in node.model_fields:
-            return [_strip_annotated(node.model_fields[step].annotation)]
+            return [strip_annotated(node.model_fields[step].annotation)]
         # smart-union: loc содержит имя класса варианта прямо здесь
         if isinstance(step, str) and step == node.__name__:
             return [node]
         return []
 
     if origin is list and isinstance(step, int):
-        return [_strip_annotated(get_args(node)[0])]
+        return [strip_annotated(get_args(node)[0])]
 
     if origin is dict and isinstance(step, str):
-        return [_strip_annotated(get_args(node)[1])]
+        return [strip_annotated(get_args(node)[1])]
 
-    if _is_union(origin):
+    if is_union_origin(origin):
         # discriminator-тег: сузим Union до варианта, у которого Literal[step]
         if isinstance(step, str):
             for arg in get_args(node):
-                arg_t = _strip_annotated(arg)
+                arg_t = strip_annotated(arg)
                 if not (isinstance(arg_t, type) and issubclass(arg_t, BaseModel)):
                     continue
                 if arg_t.__name__ == step:
@@ -387,8 +376,8 @@ def _step(node: Any, step: Any) -> list[Any]:
 
 
 def _expand_union(t: Any) -> list[Any]:
-    t = _strip_annotated(t)
-    if _is_union(get_origin(t)):
+    t = strip_annotated(t)
+    if is_union_origin(get_origin(t)):
         out: list[Any] = []
         for arg in get_args(t):
             if arg is type(None):
@@ -400,7 +389,7 @@ def _expand_union(t: Any) -> list[Any]:
 
 def _variant_matches_tag(variant: type[BaseModel], tag: str) -> bool:
     for fi in variant.model_fields.values():
-        ann = _strip_annotated(fi.annotation)
+        ann = strip_annotated(fi.annotation)
         if get_origin(ann) is typing.Literal and tag in get_args(ann):
             return True
     return False
@@ -412,7 +401,7 @@ def _collect_discriminator_tags(root: type[BaseModel] | None = None) -> set[str]
     seen: set[Any] = set()
 
     def visit(t: Any) -> None:
-        t = _strip_annotated(t)
+        t = strip_annotated(t)
         if t in seen:
             return
         seen.add(t)
@@ -421,12 +410,12 @@ def _collect_discriminator_tags(root: type[BaseModel] | None = None) -> set[str]
                 visit(fi.annotation)
             return
         origin = get_origin(t)
-        if _is_union(origin):
+        if is_union_origin(origin):
             for arg in get_args(t):
-                arg_t = _strip_annotated(arg)
+                arg_t = strip_annotated(arg)
                 if isinstance(arg_t, type) and issubclass(arg_t, BaseModel):
                     for fi in arg_t.model_fields.values():
-                        ann = _strip_annotated(fi.annotation)
+                        ann = strip_annotated(fi.annotation)
                         if get_origin(ann) is typing.Literal:
                             for v in get_args(ann):
                                 if isinstance(v, str):

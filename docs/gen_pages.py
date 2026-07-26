@@ -17,7 +17,6 @@ Discriminated union'ы спецкейсятся: показываются как
 from __future__ import annotations
 
 import inspect
-import types
 import typing
 from typing import Any, get_args, get_origin
 
@@ -26,6 +25,7 @@ from pydantic import BaseModel
 from pydantic.fields import FieldInfo
 
 from lora_bridge.config import schema
+from lora_bridge.config.introspect import is_union_origin, strip_annotated
 
 # ---------------------------------------------------------------------------
 # Описания секций (то, что не выводится из типов)
@@ -183,20 +183,15 @@ def _collect_models(root: type[BaseModel]) -> list[type[BaseModel]]:
     return ordered
 
 
-def _is_union(origin: object) -> bool:
-    """Union в обеих формах: ``typing.Union[X, Y]`` и PEP 604 ``X | Y`` (types.UnionType)."""
-    return origin is typing.Union or origin is types.UnionType
-
-
 def _models_in(t: Any) -> list[type[BaseModel]]:
     """Все BaseModel-классы, до которых можно дотянуться, развернув ``t``."""
-    t = _unwrap_annotated(t)
+    t = strip_annotated(t)
     if isinstance(t, type) and issubclass(t, BaseModel):
         return [t]
     origin = get_origin(t)
     if origin in (list, dict, tuple, set, frozenset):
         return [m for a in get_args(t) for m in _models_in(a)]
-    if _is_union(origin):
+    if is_union_origin(origin):
         return [m for a in get_args(t) for m in _models_in(a)]
     return []
 
@@ -240,7 +235,7 @@ def _render_type(fi: FieldInfo) -> str:
 
 def _render_discriminated(fi: FieldInfo) -> str:
     """Discriminated union → «один из (тегов)» с ссылками на варианты."""
-    variants = [_unwrap_annotated(a) for a in get_args(_unwrap_annotated(fi.annotation))]
+    variants = [strip_annotated(a) for a in get_args(strip_annotated(fi.annotation))]
     discr_field = fi.discriminator if isinstance(fi.discriminator, str) else "type"
     parts: list[str] = []
     for v in variants:
@@ -259,7 +254,7 @@ def _discriminator_value(model: type[BaseModel], field: str) -> str | None:
     fi = model.model_fields.get(field)
     if fi is None:
         return None
-    ann = _unwrap_annotated(fi.annotation)
+    ann = strip_annotated(fi.annotation)
     if get_origin(ann) is typing.Literal:
         args = get_args(ann)
         return repr(args[0]) if args else None
@@ -268,7 +263,7 @@ def _discriminator_value(model: type[BaseModel], field: str) -> str | None:
 
 def _pretty_type(t: Any) -> str:
     """Markdown-friendly рендер аннотации типа для ячейки таблицы."""
-    t = _unwrap_annotated(t)
+    t = strip_annotated(t)
     sup = getattr(t, "__supertype__", None)
     if sup is not None:
         # NewType — рендерим имя без ссылки: смысл id виден из описания соседних
@@ -293,7 +288,7 @@ def _pretty_type(t: Any) -> str:
         return "кортеж (" + ", ".join(_pretty_type(a) for a in args) + ")"
     if origin is typing.Literal:
         return " \\| ".join(f"`{a!r}`" for a in args)
-    if _is_union(origin):
+    if is_union_origin(origin):
         non_none = [a for a in args if a is not type(None)]
         rendered = " \\| ".join(_pretty_type(a) for a in non_none)
         if len(non_none) < len(args):
@@ -327,12 +322,6 @@ def _repr_default(v: Any) -> str:
 def _escape_cell(text: str) -> str:
     """Markdown-табличная ячейка: экранируем разделитель и переносы."""
     return text.replace("|", r"\|").replace("\n", " ").strip()
-
-
-def _unwrap_annotated(t: Any) -> Any:
-    while hasattr(t, "__metadata__"):
-        t = t.__origin__
-    return t
 
 
 def emit_commands_page(*, path: str, title: str) -> None:

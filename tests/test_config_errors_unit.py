@@ -25,9 +25,9 @@ from lora_bridge.config.errors import (
     _pretty_type,
     _resolve_models,
     _smart_union_variant_index,
-    _strip_annotated,
     format_validation_error,
 )
+from lora_bridge.config.introspect import strip_annotated
 from lora_bridge.config.schema import (
     AppConfig,
     MessengerSubscriber,
@@ -121,7 +121,7 @@ def test_pretty_type_renders_russian_label(t, expected):
     ],
 )
 def test_strip_annotated_unwraps_to_raw_type(t, expected):
-    assert _strip_annotated(t) is expected
+    assert strip_annotated(t) is expected
 
 
 @pytest.mark.parametrize(
