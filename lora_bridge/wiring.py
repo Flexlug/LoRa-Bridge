@@ -13,14 +13,14 @@ from typing import NamedTuple
 from .config.schema import (
     AppConfig,
     LoraSubscriber,
-    MessengerSubscriber,
     MeshCoreNode,
     MessengerConfig,
+    MessengerSubscriber,
 )
 from .core.bridge import MessengerBinding, NodeRuntime
-from .core.notifier import DropNotifier, NotifySink
 from .core.dedup import TtlDedup
 from .core.loopguard import LoopGuard
+from .core.notifier import DropNotifier, NotifySink
 from .core.queue import CommitQueue
 from .core.routing import LoraMember, Member, MessengerMember, RoomRegistry, RoomRoute
 from .domain.models import ChannelRef, Identity, LabelFormat, Message, RateSpec

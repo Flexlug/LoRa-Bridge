@@ -29,8 +29,7 @@ from typing import TYPE_CHECKING
 
 from aiogram import Router
 from aiogram.filters import Command
-from aiogram.types import BotCommand
-from aiogram.types import CallbackQuery
+from aiogram.types import BotCommand, CallbackQuery
 from aiogram.types import Message as TgMessage
 
 from ..ephemeral import delete_after
@@ -60,7 +59,7 @@ class CommandMeta:
 
     name: str
     description: str
-    min_role: "Role"
+    min_role: Role
 
 
 @dataclass(frozen=True)
@@ -76,10 +75,10 @@ class CallbackSpec:
 
     prefix: str
     handler: CallbackHandler
-    min_role: "Role"
+    min_role: Role
 
 
-def render_help(commands: list[CommandMeta], role: "Role | None" = None) -> str:
+def render_help(commands: list[CommandMeta], role: Role | None = None) -> str:
     """Текст ``/help`` из переданного (уже отфильтрованного) реестра."""
     lines = [f"/{spec.name} — {spec.description}" for spec in commands]
     header = "Доступные команды:"
@@ -88,7 +87,7 @@ def render_help(commands: list[CommandMeta], role: "Role | None" = None) -> str:
     return header + "\n" + "\n".join(lines)
 
 
-def command_menu(commands: list[CommandMeta], role: "Role") -> list[BotCommand]:
+def command_menu(commands: list[CommandMeta], role: Role) -> list[BotCommand]:
     """Меню для ``Bot.set_my_commands`` — фильтрует по роли вызывающего."""
     visible = [c for c in commands if c.min_role <= role]
     return [BotCommand(command=spec.name, description=spec.description) for spec in visible]
@@ -97,7 +96,7 @@ def command_menu(commands: list[CommandMeta], role: "Role") -> list[BotCommand]:
 def build_command_router(
     transport_id: str,
     commands: list[CommandSpec],
-    store: "ModerationStore | None" = None,
+    store: ModerationStore | None = None,
     owner_id: int = 0,
     callbacks: list[CallbackSpec] | None = None,
     *,

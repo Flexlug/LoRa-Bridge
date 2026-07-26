@@ -50,7 +50,7 @@ def _update(text: str, user_id: int = 2, chat_type: str = "private", chat_id: in
         update_id=1,
         message=Message(
             message_id=10,
-            date=dt.datetime(2024, 1, 1),
+            date=dt.datetime(2024, 1, 1, tzinfo=dt.UTC),
             chat=Chat(id=chat_id, type=chat_type),
             from_user=User(id=user_id, is_bot=False, first_name="tester"),
             text=text,

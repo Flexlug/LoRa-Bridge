@@ -10,18 +10,20 @@ pubkey+password, отправка через send_msg_with_retry. RX-событ�
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, ClassVar
+from typing import Any, ClassVar
 
-from meshcore import EventType as McEventType, MeshCore
+from meshcore import EventType as McEventType
+from meshcore import MeshCore
 
-from .handler import AuthorResolver, EV_CONTACT_MSG, EndpointHandler, ResolveContext
 from ....domain.models import (
+    LORA_SENDER_UID,
     ChannelRef,
     Identity,
-    LORA_SENDER_UID,
     Message,
 )
+from .handler import EV_CONTACT_MSG, AuthorResolver, EndpointHandler, ResolveContext
 
 log = logging.getLogger(__name__)
 

@@ -8,14 +8,14 @@ Admission — единственное «доброе» место отказа:
 from __future__ import annotations
 
 import time
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
-from typing import AsyncIterator, Callable, Optional
 
 import anyio
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 
-from .ratelimit import TokenBucket
 from ..domain.models import ChannelRef, Message, RateSpec
+from .ratelimit import TokenBucket
 
 
 @dataclass
@@ -39,7 +39,7 @@ class CommitQueue:
     def __init__(
         self,
         capacity: int,
-        rate: Optional[RateSpec],
+        rate: RateSpec | None,
         ttl_seconds: float,
         *,
         _clock: Callable[[], float] = time.monotonic,

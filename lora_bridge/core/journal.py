@@ -8,8 +8,9 @@ in-process, ACID, ноль операционки. Persist-before-act: стат�
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Optional, Protocol
+from typing import Protocol
 
 import aiosqlite
 
@@ -41,7 +42,7 @@ class JournalEntry:
     target_endpoint: str
     status: DeliveryStatus
     enqueued_at: float
-    tx_started_at: Optional[float]
+    tx_started_at: float | None
     payload: str
 
 
@@ -59,7 +60,7 @@ class SqliteJournal:
     def __init__(self, db_path: str, *, _clock: Callable[[], float] = time.monotonic) -> None:
         self._db_path = db_path
         self._clock = _clock
-        self._db: Optional[aiosqlite.Connection] = None
+        self._db: aiosqlite.Connection | None = None
 
     async def start(self) -> None:
         self._db = await aiosqlite.connect(self._db_path)

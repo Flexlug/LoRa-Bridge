@@ -7,10 +7,10 @@
 from __future__ import annotations
 
 import time
-from typing import Callable
+from collections.abc import Callable
 
-from .ttl_window import TtlWindow
 from ..domain.models import Message
+from .ttl_window import TtlWindow
 
 
 class LoopGuard:

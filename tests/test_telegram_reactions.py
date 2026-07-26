@@ -18,8 +18,8 @@ from aiogram.types import ReactionTypeEmoji
 
 from lora_bridge.domain.models import DeliveryStatus, RejectReason
 from lora_bridge.transports.telegram.reactions import (
-    REJECT_EMOJI,
     _PENDING_EMOJI,
+    REJECT_EMOJI,
     ReactionDebouncer,
     ReactionFeedback,
 )

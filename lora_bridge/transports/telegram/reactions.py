@@ -13,13 +13,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Optional
 
 from aiogram import Bot
-from aiogram.types import Message as TgMessage, ReactionTypeEmoji, ReactionTypeUnion
+from aiogram.types import Message as TgMessage
+from aiogram.types import ReactionTypeEmoji, ReactionTypeUnion
 
-from .ephemeral import delete_after
 from ...domain.models import DeliveryStatus, RejectReason
+from .ephemeral import delete_after
 
 log = logging.getLogger(__name__)
 
@@ -97,7 +97,7 @@ class ReactionDebouncer:
         chat_id, message_id = key
         try:
             await bot.set_message_reaction(chat_id, int(message_id), reaction=[])
-        except Exception:  # noqa: BLE001
+        except Exception:
             log.debug("clear реакции не удался для %s/%s", chat_id, message_id, exc_info=True)
 
     async def _delayed_apply(
@@ -124,7 +124,7 @@ class ReactionDebouncer:
         try:
             await bot.set_message_reaction(chat_id, int(message_id), reaction=reaction)
             self._sent.add(key)  # реакция выставлена — теперь clear_now знает что чистить
-        except Exception:  # noqa: BLE001
+        except Exception:
             log.debug("set_message_reaction не удался для %s/%s", chat_id, message_id, exc_info=True)
 
 
@@ -143,7 +143,7 @@ class ReactionFeedback:
         chat_id: int,
         message_id: str,
         status: DeliveryStatus,
-        reason: Optional[RejectReason] = None,
+        reason: RejectReason | None = None,
     ) -> None:
         if status == DeliveryStatus.TRANSMITTING:
             return  # промежуточный — не трогаем реакцию
@@ -160,7 +160,7 @@ class ReactionFeedback:
         if reaction:
             self._debouncer.schedule(key, reaction, self._bot)
 
-    async def report_disabled(self, message: "TgMessage") -> None:
+    async def report_disabled(self, message: TgMessage) -> None:
         """Реакция 🚫 на сообщение забаненного пользователя (best-effort)."""
         try:
             await self._bot.set_message_reaction(  # verify
@@ -168,10 +168,10 @@ class ReactionFeedback:
                 message.message_id,
                 reaction=[ReactionTypeEmoji(emoji="🚫")],
             )
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001, S110 — реакция best-effort
             pass
 
-    async def report_alias_required(self, message: "TgMessage") -> None:
+    async def report_alias_required(self, message: TgMessage) -> None:
         """Реакция 🪪 на сообщение без alias, когда он обязателен (best-effort)."""
         try:
             await self._bot.set_message_reaction(
@@ -179,11 +179,11 @@ class ReactionFeedback:
                 message.message_id,
                 reaction=[ReactionTypeEmoji(emoji="🪪")],
             )
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001, S110 — реакция best-effort
             pass
 
     async def send_expiring_reply(
-        self, message: "TgMessage", text: str, delay: float = ALIAS_REPLY_TTL_S
+        self, message: TgMessage, text: str, delay: float = ALIAS_REPLY_TTL_S
     ) -> None:
         """Reply, который сам удаляется через ``delay`` секунд. Исходное сообщение не трогаем."""
         try:
@@ -194,7 +194,7 @@ class ReactionFeedback:
 
     @staticmethod
     def _reaction_for(
-        status: DeliveryStatus, reason: Optional[RejectReason]
+        status: DeliveryStatus, reason: RejectReason | None
     ) -> list[ReactionTypeUnion]:
         if status == DeliveryStatus.PENDING:
             return [ReactionTypeEmoji(emoji=_PENDING_EMOJI)]

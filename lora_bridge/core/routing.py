@@ -8,7 +8,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Union
 
 from ..domain.models import ChannelRef, messenger_channel
 
@@ -27,14 +26,14 @@ class LoraMember:
 class MessengerMember:
     transport_id: str
     chat: str
-    topic: Optional[str] = None
+    topic: str | None = None
 
     @property
     def ref(self) -> ChannelRef:
         return ChannelRef(self.transport_id, messenger_channel(self.chat, self.topic))
 
 
-Member = Union[LoraMember, MessengerMember]
+Member = LoraMember | MessengerMember
 
 
 @dataclass(frozen=True)
@@ -64,5 +63,5 @@ class RoomRegistry:
                     raise ValueError(f"эндпоинт {m.ref} состоит более чем в одной комнате")
                 self._by_ref[m.ref] = route
 
-    def for_source(self, source: ChannelRef) -> Optional[RoomRoute]:
+    def for_source(self, source: ChannelRef) -> RoomRoute | None:
         return self._by_ref.get(source)

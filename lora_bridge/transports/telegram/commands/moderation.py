@@ -5,17 +5,19 @@ import html
 import math
 import time
 from collections.abc import Awaitable, Callable
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from aiogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+)
+from aiogram.types import (
     Message as TgMessage,
 )
 
-from .framework import CallbackSpec, CommandMeta, CommandSpec
 from ..moderation.roles import Role
+from .framework import CallbackSpec, CommandMeta, CommandSpec
 
 if TYPE_CHECKING:
     from ..moderation.store import ModerationStore
@@ -34,7 +36,7 @@ MODERATION_COMMAND_METAS: list[CommandMeta] = [
 _PAGE_SIZE = 10
 
 
-async def resolve_target(message: TgMessage) -> Optional[tuple[int, Optional[str]]]:
+async def resolve_target(message: TgMessage) -> tuple[int, str | None] | None:
     """Reply или числовой аргумент → (tg_id, display_name|None). None = неопределимо."""
     if message.reply_to_message and message.reply_to_message.from_user:
         u = message.reply_to_message.from_user
@@ -52,13 +54,13 @@ async def resolve_target(message: TgMessage) -> Optional[tuple[int, Optional[str
     return None
 
 
-def _mention(tg_id: int, name: Optional[str]) -> str:
+def _mention(tg_id: int, name: str | None) -> str:
     label = html.escape(name) if name else str(tg_id)
     return f'<a href="tg://user?id={tg_id}">{label}</a>'
 
 
 async def _audit_text_and_kb(
-    page: int, store: "ModerationStore"
+    page: int, store: ModerationStore
 ) -> tuple[str, InlineKeyboardMarkup]:
     import datetime as _dt
     total = await store.count_audit_entries()
@@ -68,7 +70,7 @@ async def _audit_text_and_kb(
 
     lines = []
     for e in entries:
-        ts_str = _dt.datetime.utcfromtimestamp(e.ts).strftime("%Y-%m-%d %H:%M")
+        ts_str = _dt.datetime.fromtimestamp(e.ts, tz=_dt.UTC).strftime("%Y-%m-%d %H:%M")
         actor = _mention(e.actor_id, e.actor_name)
         target = _mention(e.target_id, e.target_name) if e.target_id else ""
         detail = f"  [{html.escape(e.detail)}]" if e.detail else ""
@@ -90,7 +92,7 @@ async def _audit_text_and_kb(
     return text, kb
 
 
-async def _send_audit_page_edit(query: CallbackQuery, page: int, store: "ModerationStore") -> None:
+async def _send_audit_page_edit(query: CallbackQuery, page: int, store: ModerationStore) -> None:
     text, kb = await _audit_text_and_kb(page, store)
     msg = query.message
     if isinstance(msg, TgMessage):
@@ -98,7 +100,7 @@ async def _send_audit_page_edit(query: CallbackQuery, page: int, store: "Moderat
 
 
 def make_moderation_commands(
-    store: "ModerationStore",
+    store: ModerationStore,
     cfg: object,
     *,
     on_role_changed: Callable[[int, int], Awaitable[None]] | None = None,
@@ -167,8 +169,8 @@ def make_moderation_commands(
         actor_id = actor.id if actor else 0
 
         target_id: int = actor_id
-        target_name: Optional[str] = None
-        new_alias: Optional[str] = None
+        target_name: str | None = None
+        new_alias: str | None = None
 
         if args:
             if message.reply_to_message and message.reply_to_message.from_user:
@@ -304,7 +306,7 @@ def make_moderation_commands(
     ]
 
 
-def make_audit_callbacks(store: "ModerationStore") -> list[CallbackSpec]:
+def make_audit_callbacks(store: ModerationStore) -> list[CallbackSpec]:
     """Фабрика CallbackSpec для пагинации /audit."""
     async def audit_page(query: CallbackQuery) -> None:
         data = query.data or ""

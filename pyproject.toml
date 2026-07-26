@@ -22,7 +22,7 @@ dependencies = [
 dev = [
     "pytest>=8.0",
     "pytest-anyio>=0.0",
-    "ruff>=0.4,<0.16",  # 0.16.0 расширил дефолтные правила (~170 ошибок); снятие пина — LoRa-Bridge-9qw
+    "ruff>=0.16,<0.17",  # минорные релизы ruff меняют дефолтные правила — бамп границы осознанным PR
     "mypy>=1.14",  # per-module follow_untyped_imports (см. [tool.mypy] ниже) — добавлен в 1.14.0
     "types-pyserial",
 ]

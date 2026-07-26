@@ -25,9 +25,9 @@ from lora_bridge.config.errors import (
     _pretty_type,
     _resolve_models,
     _smart_union_variant_index,
-    _strip_annotated,
     format_validation_error,
 )
+from lora_bridge.config.introspect import strip_annotated
 from lora_bridge.config.schema import (
     AppConfig,
     MessengerSubscriber,
@@ -38,7 +38,6 @@ from lora_bridge.config.schema import (
     TelegramMessengerConfig,
     UsbConnection,
 )
-
 
 # ===========================================================================
 # 1. Чистые хелперы
@@ -122,7 +121,7 @@ def test_pretty_type_renders_russian_label(t, expected):
     ],
 )
 def test_strip_annotated_unwraps_to_raw_type(t, expected):
-    assert _strip_annotated(t) is expected
+    assert strip_annotated(t) is expected
 
 
 @pytest.mark.parametrize(
@@ -342,7 +341,7 @@ def test_format_one_does_not_raise_on_unknown_pydantic_kind():
     try:
         _M.model_validate({"x": "not an int"})
     except ValidationError as exc:
-        err = {**list(exc.errors())[0], "type": "totally_unknown_pydantic_kind"}
+        err = {**next(iter(exc.errors())), "type": "totally_unknown_pydantic_kind"}
         rendered = "\n".join(_format_one(err, 1))
         assert rendered.startswith("1. ")
         # сырое сообщение pydantic пробрасывается как есть

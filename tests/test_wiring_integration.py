@@ -12,9 +12,10 @@ CommitQueue, LoopGuard, ...) работает без изменений.
 
 from __future__ import annotations
 
-import yaml
-import pytest
 import anyio
+import anyio.lowlevel
+import pytest
+import yaml
 
 import lora_bridge.wiring as wiring_mod
 from lora_bridge.config.schema import AppConfig
@@ -22,7 +23,12 @@ from lora_bridge.core.bridge import Bridge
 from lora_bridge.core.journal import SqliteJournal
 from lora_bridge.core.status import StatusDispatcher
 from lora_bridge.domain.models import (
-    BRIDGE_TRANSPORT_UID, ChannelRef, DeliveryStatus, Identity, Message, RejectReason,
+    BRIDGE_TRANSPORT_UID,
+    ChannelRef,
+    DeliveryStatus,
+    Identity,
+    Message,
+    RejectReason,
 )
 from lora_bridge.wiring import (
     build_lora_nodes,
@@ -31,7 +37,7 @@ from lora_bridge.wiring import (
     build_readonly_endpoints,
     build_rooms,
 )
-from tests.helpers.fakes import FakeTransport, LORA_CAPS, MSG_CAPS
+from tests.helpers.fakes import LORA_CAPS, MSG_CAPS, FakeTransport
 
 _NOTICE_SENDER = Identity(display_name="bridge", transport_uid=BRIDGE_TRANSPORT_UID)
 
@@ -437,9 +443,9 @@ async def test_lora_to_tg_full_path(wire_fakes):
 
     async with anyio.create_task_group() as tg:
         tg.start_soon(bridge.consume, lora_transport)
-        await anyio.sleep(0)  # даём consume() подписаться на hub
+        await anyio.lowlevel.checkpoint()  # даём consume() подписаться на hub
         await lora_transport.inject(incoming)
-        await anyio.sleep(0)  # даём consume() обработать
+        await anyio.lowlevel.checkpoint()  # даём consume() обработать
         tg.cancel_scope.cancel()
 
     await journal.stop()
@@ -468,9 +474,9 @@ async def test_lora_to_lora_full_path(wire_fakes):
 
     async with anyio.create_task_group() as tg:
         tg.start_soon(bridge.consume, lora_fakes["mc-1"])
-        await anyio.sleep(0)
+        await anyio.lowlevel.checkpoint()
         await lora_fakes["mc-1"].inject(incoming)
-        await anyio.sleep(0)
+        await anyio.lowlevel.checkpoint()
         tg.cancel_scope.cancel()
 
     node2 = runtimes["mc-2"]
@@ -490,7 +496,7 @@ async def test_lora_to_lora_full_path(wire_fakes):
 async def test_rate_limit_from_config(wire_fakes):
     """egress_rate: 1 msg/60s в конфиге → второе сообщение отклоняется с RATE_LIMIT."""
     _, tg_fakes = wire_fakes
-    bridge, runtimes, journal = await assemble(_CFG_TIGHT_RATE)
+    bridge, _, journal = await assemble(_CFG_TIGHT_RATE)
 
     def _msg(mid):
         return Message(
@@ -512,7 +518,7 @@ async def test_rate_limit_from_config(wire_fakes):
 async def test_too_long_message_rejected(wire_fakes):
     """Сообщение длиннее 150 байт отклоняется с TOO_LONG до попадания в очередь."""
     lora_fakes, tg_fakes = wire_fakes
-    bridge, runtimes, journal = await assemble(_CFG_ONE_ROOM)
+    bridge, _, journal = await assemble(_CFG_ONE_ROOM)
 
     await bridge.admit(
         Message(
@@ -532,7 +538,7 @@ async def test_too_long_message_rejected(wire_fakes):
 async def test_read_only_endpoint_from_config_rejects_post(wire_fakes):
     """endpoints.<name>.read_only: true в YAML → постинг из мессенджера отклоняется с READONLY."""
     lora_fakes, tg_fakes = wire_fakes
-    bridge, runtimes, journal = await assemble(_CFG_READONLY)
+    bridge, _, journal = await assemble(_CFG_READONLY)
 
     await bridge.admit(
         Message(
@@ -577,7 +583,7 @@ async def test_short_ttl_from_config_expires_message(wire_fakes):
 async def test_message_from_unconfigured_chat_is_dropped(wire_fakes):
     """Сообщение из чата вне rooms тихо игнорируется — без статуса, без очереди."""
     lora_fakes, tg_fakes = wire_fakes
-    bridge, runtimes, journal = await assemble(_CFG_ONE_ROOM)
+    bridge, _, journal = await assemble(_CFG_ONE_ROOM)
 
     await bridge.admit(
         Message(
@@ -607,9 +613,9 @@ async def test_lora_message_to_unconfigured_endpoint_is_dropped(wire_fakes):
 
     async with anyio.create_task_group() as tg:
         tg.start_soon(bridge.consume, lora_fakes["mc-1"])
-        await anyio.sleep(0)
+        await anyio.lowlevel.checkpoint()
         await lora_fakes["mc-1"].inject(ghost_msg)
-        await anyio.sleep(0)
+        await anyio.lowlevel.checkpoint()
         tg.cancel_scope.cancel()
 
     await journal.stop()
@@ -739,9 +745,9 @@ async def test_lora_rx_mirrors_to_both_tg_chats(wire_fakes):
 
     async with anyio.create_task_group() as tg:
         tg.start_soon(bridge.consume, lora_fakes["mc-1"])
-        await anyio.sleep(0)  # даём consume() подписаться на hub
+        await anyio.lowlevel.checkpoint()  # даём consume() подписаться на hub
         await lora_fakes["mc-1"].inject(incoming)
-        await anyio.sleep(0)  # даём consume() обработать
+        await anyio.lowlevel.checkpoint()  # даём consume() обработать
         tg.cancel_scope.cancel()
 
     await journal.stop()
@@ -779,9 +785,9 @@ async def test_mirror_failure_does_not_block_second_chat(wire_fakes, monkeypatch
     try:
         async with anyio.create_task_group() as tg:
             tg.start_soon(bridge.consume, lora_fakes["mc-1"])
-            await anyio.sleep(0)
+            await anyio.lowlevel.checkpoint()
             await lora_fakes["mc-1"].inject(incoming)
-            await anyio.sleep(0)
+            await anyio.lowlevel.checkpoint()
             tg.cancel_scope.cancel()
     finally:
         await journal.stop()
@@ -829,10 +835,10 @@ async def test_dedup_same_lora_message_twice(wire_fakes):
 
     async with anyio.create_task_group() as tg:
         tg.start_soon(bridge.consume, lora_fakes["mc-1"])
-        await anyio.sleep(0)
+        await anyio.lowlevel.checkpoint()
         await lora_fakes["mc-1"].inject(msg)
         await lora_fakes["mc-1"].inject(msg)  # тот же текст → dedup
-        await anyio.sleep(0)
+        await anyio.lowlevel.checkpoint()
         tg.cancel_scope.cancel()
 
     await journal.stop()
@@ -870,9 +876,9 @@ async def test_loopguard_suppresses_echo_through_wiring(wire_fakes):
     )
     async with anyio.create_task_group() as tg:
         tg.start_soon(bridge.consume, lora_fakes["mc-1"])
-        await anyio.sleep(0)
+        await anyio.lowlevel.checkpoint()
         await lora_fakes["mc-1"].inject(echo)
-        await anyio.sleep(0)
+        await anyio.lowlevel.checkpoint()
         tg.cancel_scope.cancel()
 
     await journal.stop()

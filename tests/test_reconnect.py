@@ -10,8 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import anyio
 
-from lora_bridge.transports.meshcore.transport import MeshCoreTransport, EV_DISCONNECTED
-
+from lora_bridge.transports.meshcore.transport import EV_DISCONNECTED, MeshCoreTransport
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -62,7 +61,7 @@ async def test_signal_disconnect_idempotent():
 # ---------------------------------------------------------------------------
 
 async def test_send_returns_overloaded_when_mc_is_none():
-    from lora_bridge.domain.models import ChannelRef, Message, Identity
+    from lora_bridge.domain.models import ChannelRef, Identity, Message
     t = _make_transport()
     assert t._mc is None  # начальное состояние
     target = ChannelRef("test", "ep")

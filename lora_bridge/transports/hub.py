@@ -7,8 +7,8 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator, Iterator
 from contextlib import contextmanager
-from typing import AsyncIterator, Iterator
 
 import anyio
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream

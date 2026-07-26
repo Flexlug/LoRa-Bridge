@@ -13,6 +13,7 @@ from __future__ import annotations
 import time
 
 import anyio
+import anyio.lowlevel
 import pytest
 
 import lora_bridge.core.egress as egress_mod
@@ -33,7 +34,7 @@ from lora_bridge.domain.models import (
     RateSpec,
     RejectReason,
 )
-from tests.helpers.fakes import FakeClock, FakeTransport, LORA_CAPS, MSG_CAPS
+from tests.helpers.fakes import LORA_CAPS, MSG_CAPS, FakeClock, FakeTransport
 
 pytestmark = pytest.mark.anyio
 
@@ -77,13 +78,16 @@ def lora_msg(text: str, mid: str = "l1", *, origin_tag: str | None = None) -> Me
     )
 
 
+_DEFAULT_RATE = RateSpec(100, 60)
+
+
 async def build_bridge(
     lora: FakeTransport,
     messenger: FakeTransport,
     *,
     queue_ttl: float = 45.0,
     commit_timeout: float = 5.0,
-    rate: RateSpec = RateSpec(100, 60),
+    rate: RateSpec = _DEFAULT_RATE,
     notify_window: float = 60.0,
     notify_clock=None,
 ) -> tuple[Bridge, NodeRuntime, list]:
@@ -218,16 +222,16 @@ async def test_dedup_drops_duplicate_lora_message():
     """Два одинаковых LoRa-сообщения подряд: второе silently отбрасывается dedup."""
     lora = FakeTransport("n1", LORA_CAPS)
     tg = FakeTransport("tg", MSG_CAPS)
-    bridge, node, _ = await build_bridge(lora, tg)
+    bridge, _, _ = await build_bridge(lora, tg)
 
     m = lora_msg("mesh broadcast", mid="same-id")
 
     async with anyio.create_task_group() as tg_scope:
         tg_scope.start_soon(bridge.consume, lora)
-        await anyio.sleep(0)  # даём consume() запуститься и подписаться на hub
+        await anyio.lowlevel.checkpoint()  # даём consume() запуститься и подписаться на hub
         await lora.inject(m)
         await lora.inject(m)  # дубль — должен быть проглочен dedup
-        await anyio.sleep(0)  # даём consume() обработать оба сообщения
+        await anyio.lowlevel.checkpoint()  # даём consume() обработать оба сообщения
         tg_scope.cancel_scope.cancel()
 
     assert len(tg.sent) == 1, "дубль не должен зеркалироваться в мессенджер"
@@ -249,9 +253,9 @@ async def test_loopguard_suppresses_own_echo():
 
     async with anyio.create_task_group() as tg_scope:
         tg_scope.start_soon(bridge.consume, lora)
-        await anyio.sleep(0)  # даём consume() запуститься и подписаться на hub
+        await anyio.lowlevel.checkpoint()  # даём consume() запуститься и подписаться на hub
         await lora.inject(lora_msg(sent_text))  # то же самое вернулось назад из эфира
-        await anyio.sleep(0)
+        await anyio.lowlevel.checkpoint()
         tg_scope.cancel_scope.cancel()
 
     assert tg.sent == [], "эхо собственной передачи не должно уходить в мессенджер"
@@ -267,9 +271,9 @@ async def test_loopguard_passes_other_messages():
 
     async with anyio.create_task_group() as tg_scope:
         tg_scope.start_soon(bridge.consume, lora)
-        await anyio.sleep(0)  # даём consume() запуститься и подписаться на hub
+        await anyio.lowlevel.checkpoint()  # даём consume() запуститься и подписаться на hub
         await lora.inject(lora_msg("совершенно другое сообщение"))
-        await anyio.sleep(0)
+        await anyio.lowlevel.checkpoint()
         tg_scope.cancel_scope.cancel()
 
     assert len(tg.sent) == 1

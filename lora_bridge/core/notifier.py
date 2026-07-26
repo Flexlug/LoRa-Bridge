@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import time
 from collections import defaultdict
-from typing import Awaitable, Callable, NamedTuple
+from collections.abc import Awaitable, Callable
+from typing import NamedTuple
 
 import anyio
 

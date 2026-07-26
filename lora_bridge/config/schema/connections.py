@@ -8,7 +8,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Literal, Union
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
@@ -64,7 +64,7 @@ class BleConnection(ConnectionBase):
 
 
 Connection = Annotated[
-    Union[UsbConnection, SerialConnection, TcpConnection, BleConnection],
+    UsbConnection | SerialConnection | TcpConnection | BleConnection,
     Field(discriminator="type"),
 ]
 """Способ физического подключения к LoRa-узлу.

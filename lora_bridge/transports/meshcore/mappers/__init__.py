@@ -8,7 +8,8 @@
 
 from __future__ import annotations
 
-from typing import Iterable, assert_never
+from collections.abc import Iterable
+from typing import assert_never
 
 from ....config.schema import (
     Endpoint,
@@ -52,11 +53,11 @@ def collect_channel_names(handlers: Iterable[EndpointHandler]) -> frozenset[str]
 
 __all__ = [
     "EndpointHandler",
-    "ResolveContext",
-    "PublicChannelHandler",
     "PrivateChannelHandler",
+    "PublicChannelHandler",
+    "ResolveContext",
     "RoomServerHandler",
-    "init_endpoint_handler",
     "collect_channel_names",
+    "init_endpoint_handler",
     "route_rx",
 ]

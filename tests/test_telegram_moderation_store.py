@@ -2,8 +2,10 @@
 from collections.abc import AsyncGenerator
 
 import pytest
+
 from lora_bridge.transports.telegram.moderation.roles import Role
 from lora_bridge.transports.telegram.moderation.store import ModerationStore
+
 
 @pytest.fixture
 async def store() -> AsyncGenerator[ModerationStore, None]:

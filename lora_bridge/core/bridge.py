@@ -12,10 +12,18 @@ from __future__ import annotations
 import functools
 import logging
 from dataclasses import dataclass, replace
-from typing import Optional, assert_never
+from typing import assert_never
 
 import anyio
 
+from ..domain.models import (
+    ChannelRef,
+    DeliveryStatus,
+    LabelFormat,
+    Message,
+    RejectReason,
+)
+from ..domain.ports import AdmissionPolicy, Transport
 from .dedup import TtlDedup
 from .egress import RadioWorker
 from .journal import JournalEntry, OutboundJournal
@@ -26,14 +34,6 @@ from .routing import LoraMember, MessengerMember, RoomRegistry, RoomRoute
 from .status import StatusDispatcher
 from .supervisor import Supervisor
 from .transform import build_lora_text, oversize_bytes, relay_lora_text
-from ..domain.models import (
-    ChannelRef,
-    DeliveryStatus,
-    LabelFormat,
-    Message,
-    RejectReason,
-)
-from ..domain.ports import AdmissionPolicy, Transport
 
 log = logging.getLogger(__name__)
 
@@ -70,7 +70,7 @@ class Bridge:
         rooms: RoomRegistry,
         status: StatusDispatcher,
         journal: OutboundJournal,
-        admission_policy: Optional[AdmissionPolicy] = None,
+        admission_policy: AdmissionPolicy | None = None,
         readonly_endpoints: frozenset[ChannelRef] = frozenset(),
     ) -> None:
         self._nodes = nodes
@@ -111,7 +111,7 @@ class Bridge:
                 for transport in reversed(all_transports):
                     try:
                         await transport.stop()
-                    except Exception:  # noqa: BLE001 — на shutdown не валим остальные stop()
+                    except Exception:  # на shutdown не валим остальные stop()
                         log.exception("остановка транспорта '%s' упала", transport.id)
 
     def build_worker(self, node: NodeRuntime) -> RadioWorker:
@@ -264,7 +264,7 @@ class Bridge:
             return
         try:
             await binding.transport.send(member.ref, msg)  # best-effort, без статуса (A2)
-        except Exception:  # noqa: BLE001 — миррор не должен валить поток
+        except Exception:  # миррор не должен валить поток
             log.exception("миррор в %s не удался", member.ref)
 
     async def reject(

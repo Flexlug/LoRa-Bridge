@@ -19,22 +19,13 @@ Commit зависит от типа эндпоинта (детали — в со
 from __future__ import annotations
 
 import logging
-from typing import Any, AsyncIterator, Optional, TYPE_CHECKING
+from collections.abc import AsyncIterator
+from typing import TYPE_CHECKING, Any
 
 import anyio
-from meshcore import EventType as McEventType, MeshCore
+from meshcore import EventType as McEventType
+from meshcore import MeshCore
 
-from . import connection
-from .mappers import (
-    EndpointHandler,
-    ResolveContext,
-    collect_channel_names,
-    init_endpoint_handler,
-    route_rx,
-)
-from .result import classify
-from ..hub import Hub
-from ...domain.ports import Transport
 from ...domain.models import (
     Capabilities,
     ChannelRef,
@@ -44,6 +35,17 @@ from ...domain.models import (
     RejectReason,
     SendResult,
 )
+from ...domain.ports import Transport
+from ..hub import Hub
+from . import connection
+from .mappers import (
+    EndpointHandler,
+    ResolveContext,
+    collect_channel_names,
+    init_endpoint_handler,
+    route_rx,
+)
+from .result import classify
 
 if TYPE_CHECKING:
     from ...config.schema import MeshCoreNode
@@ -133,7 +135,7 @@ class MeshCoreTransport(Transport):
                 await self.start()
             except anyio.get_cancelled_exc_class():
                 raise
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 — реконнект: любой сбой драйвера = retry с backoff
                 log.warning("нода '%s': реконнект не удался (%s), следующая попытка через %.0f с", self.id, exc, delay)
                 delay = min(delay * 2, 60.0)
                 # start() уже выставил свежий _disconnect_ev — сбрасываем,
@@ -154,7 +156,7 @@ class MeshCoreTransport(Transport):
         if mc is not None:
             try:
                 await mc.disconnect()  # type: ignore[no-untyped-call]  # verify; у метода либы нет аннотаций
-            except Exception:
+            except Exception:  # noqa: BLE001, S110 — коннект уже мёртв, ошибки disconnect неинтересны
                 pass
 
     def _signal_disconnect(self) -> None:
@@ -186,7 +188,7 @@ class MeshCoreTransport(Transport):
                         self.id, target.channel, result.detail, res.payload,
                     )
             return result
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             log.exception("MeshCore send в %s упал", target.channel)
             return SendResult.failure(str(exc))
 
@@ -222,6 +224,6 @@ class MeshCoreTransport(Transport):
         origin: ChannelRef,
         message_id: str,
         status: DeliveryStatus,
-        reason: Optional[RejectReason] = None,
+        reason: RejectReason | None = None,
     ) -> None:
         return None  # LoRa не показывает статус
